@@ -1,4 +1,4 @@
-# Baseline_NMR5 10.2 para PIC.EE.0246
+# Baseline_NMR5 10.2.1 para PIC.EE.0246
 # Autor: Mauricio Menon
 # Versão inicial: FAT NMR5 Houston (2018)
 # Versão atual 27/06/2025
@@ -19,13 +19,14 @@ param(
 
 # Constantes globais
 $Script:SCRIPT_HEADER = @"
-Script de Manutencao Preventiva - SSP - Ambiente SCADA
-Versao: 1.1 - Baseado no NMR5_Baseline_v9.0 + Comissionamento da SOPHO/STH
-Autor: Mauricio Menon             25/06/2025
+Baseline_NMR5 10.2 para PIC.EE.0246
+Autor: Mauricio Menon
+Versão inicial: FAT NMR5 Houston (2018)
+Versão atual 27/06/2025
 "@
 
 $Script:SCRIPT_COMPATIBILITY = "PowerShell 5.1+ / PowerShell 7+ / Windows Server 2012 R2+ / Windows 10+"
-$Script:SCRIPT_METHODS = "CIM + WMI + WMIC + Registry + Comandos Nativos"
+$Script:SCRIPT_METHODS = "CIM + WMI + WMIC + Registry + Comandos Nativos + TAF + Comissionamento SOPHO/STH"
 $Script:SCRIPT_SCOPE = "Sistema + Performance + Seguranca + Inventario"
 
 # Configuracoes
@@ -2139,7 +2140,7 @@ function Start-SystemAudit {
     $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
     
     Write-Host "################################################################################" -ForegroundColor Cyan
-    Write-Host "                    INICIANDO AUDITORIA TECNICA - SISTEMA SCADA" -ForegroundColor Cyan
+    Write-Host "                    BASELINE NMR5 10.2 - PIC.EE.0246" -ForegroundColor Cyan
     Write-Host "################################################################################" -ForegroundColor Cyan
     Write-Host "$Script:SCRIPT_HEADER" -ForegroundColor White
     Write-Host "Compatibilidade: $Script:SCRIPT_COMPATIBILITY" -ForegroundColor Gray
