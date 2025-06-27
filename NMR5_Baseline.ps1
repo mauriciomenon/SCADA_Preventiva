@@ -3,6 +3,7 @@
 # Versão inicial: FAT NMR5 Houston (2018)
 # Versão atual 27/06/2025
 # Compatível com PowerShell 5.1+ e PowerShell 7+
+# Metodos: CIM + WMI + WMIC + Registry + Comandos Nativos
 # Inclusao de comandos locais baseados no TAF e Comissionamento SOPHO/STH
 
 param(
@@ -2171,6 +2172,14 @@ function Start-SystemAudit {
     $osVersion = Test-OSVersion
     $currentEnvironment = Get-Environment
     
+    Write-Host "Privilegios admin: $(if ($adminPrivilege) { 'Sim' } else { 'Nao' })" -ForegroundColor $(if ($adminPrivilege) {
+            'Green' 
+        }
+        else {
+            'Yellow' 
+        })
+    Write-Host "Versao OS: $osVersion" -ForegroundColor Gray
+    
     if (-not $psVersion) {
         Write-Error "Versao do PowerShell incompativel. Interrompendo execucao."
         return
@@ -2221,6 +2230,12 @@ function Start-SystemAudit {
     # 8. Configuracoes de seguranca
     Write-Host "`n[8/8] Analisando configuracoes de seguranca..." -ForegroundColor Yellow
     $securityResults = Get-SecurityConfigurationAnalysis -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
+    Write-Host "  Configuracoes de seguranca coletadas: $(if ($securityResults) { 'OK' } else { 'Falha' })" -ForegroundColor $(if ($securityResults) {
+            'Green' 
+        }
+        else {
+            'Red' 
+        })
     
     # Gerar relatorio final
     Write-Host "`n################################################################################" -ForegroundColor Magenta
@@ -2228,6 +2243,23 @@ function Start-SystemAudit {
     Write-Host "################################################################################" -ForegroundColor Magenta
     
     $finalReport = New-ConsolidatedReportComplete -Computer $Computer -OutputPath $OutputBasePath -Domain $Domain -Timestamp $timestamp -SystemInfo $systemInfo -SoftwareList $softwareList -DiskResults $diskResults -NetworkResults $networkResults -JavaResults $javaResults -EventAnalysis $eventAnalysis
+    
+    # Informacoes adicionais no console
+    if ($securityResults) {
+        $userCount = if ($securityResults.LocalUsers) {
+            $securityResults.LocalUsers.Count 
+        }
+        else {
+            0 
+        }
+        $groupCount = if ($securityResults.LocalGroups) {
+            $securityResults.LocalGroups.Count 
+        }
+        else {
+            0 
+        }
+        Write-Host "Seguranca: $userCount usuarios locais, $groupCount grupos locais" -ForegroundColor Gray
+    }
     
     # Criar pagina HTML de navegacao
     Write-Host "`nCriando pagina HTML de navegacao..." -ForegroundColor Yellow
@@ -2243,6 +2275,13 @@ function Start-SystemAudit {
     Write-Host "Sistema auditado: $Computer" -ForegroundColor White
     Write-Host "Pasta de saida: $OutputBasePath" -ForegroundColor White
     Write-Host "Pagina HTML: $htmlPage" -ForegroundColor White
+    Write-Host "Privilegios admin: $(if ($adminPrivilege) { 'Disponivel' } else { 'Limitado' })" -ForegroundColor $(if ($adminPrivilege) {
+            'Green' 
+        }
+        else {
+            'Yellow' 
+        })
+    Write-Host "Versao OS: $osVersion" -ForegroundColor Gray
     
     if ($finalReport) {
         Write-Host "Status do sistema: $($finalReport.Status)" -ForegroundColor $(
@@ -2431,10 +2470,13 @@ function Invoke-SystemAudit {
     }
 }
 
-# Exportar funcoes principais
-Export-ModuleMember -Function Invoke-SystemAudit, Start-SystemAudit
-
 # Execucao direta se chamado como script
-if ($MyInvocation.InvocationName -ne '.') {
+if ($MyInvocation.InvocationName -ne '.' -and $MyInvocation.Line -notmatch '^\s*\.' -and $MyInvocation.InvocationName -ne 'Export-ModuleMember') {
+    # Executar a auditoria diretamente
+    Write-Host "Executando auditoria diretamente..." -ForegroundColor Cyan
     Invoke-SystemAudit -Environment $Environment -TargetComputer $TargetComputer -OutputBasePath $OutputBasePath -ParallelExecution:$ParallelExecution -MaxParallelJobs $MaxParallelJobs
+}
+else {
+    # Se for dot sourcing ou import de módulo, apenas carregar as funções
+    Write-Host "Funcoes carregadas. Use Invoke-SystemAudit para executar." -ForegroundColor Green
 }
