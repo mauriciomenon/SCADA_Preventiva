@@ -1,7 +1,7 @@
-# Baseline_NMR5 10.2.1 para PIC.EE.0246
+# Baseline_NMR5 10.2.2 para PIC.EE.0246 - VERSAO CORRIGIDA
 # Autor: Mauricio Menon
 # Versão inicial: FAT NMR5 Houston (2018)
-# Versão atual 27/06/2025
+# Versão atual 27/06/2025 - CORRIGIDA
 # Compatível com PowerShell 5.1+ e PowerShell 7+
 # Metodos: CIM + WMI + WMIC + Registry + Comandos Nativos
 # Inclusao de comandos locais baseados no TAF e Comissionamento SOPHO/STH
@@ -22,7 +22,7 @@ $Script:SCRIPT_HEADER = @"
 Baseline_NMR5 10.2 para PIC.EE.0246
 Autor: Mauricio Menon
 Versão inicial: FAT NMR5 Houston (2018)
-Versão atual 27/06/2025
+Versão atual 27/06/2025 - CORRIGIDA
 "@
 
 $Script:SCRIPT_COMPATIBILITY = "PowerShell 5.1+ / PowerShell 7+ / Windows Server 2012 R2+ / Windows 10+"
@@ -226,7 +226,575 @@ function Get-TargetList {
     return $targets
 }
 
-# Funcao Get-RemoteProgram
+# Funcao NOVA: Executar comando com todos os metodos e avaliar qualidade
+function Invoke-AllMethodsWithQuality {
+    param(
+        [string]$Computer,
+        [string]$DataType,
+        [scriptblock]$CIMCommand,
+        [scriptblock]$WMICommand,
+        [scriptblock]$WMICCommand,
+        [scriptblock]$CMDCommand,
+        [string]$ComplementarPath
+    )
+    
+    $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
+    $results = @{}
+    $qualityScores = @{}
+    
+    Write-Host "    Executando todos os metodos para $DataType..." -ForegroundColor Yellow
+    
+    # METODO 1: CIM (Prioridade 1)
+    try {
+        Write-Host "      • Tentando CIM..." -ForegroundColor Gray
+        if ($isLocal) {
+            $results["CIM"] = & $CIMCommand
+        } else {
+            $results["CIM"] = & $CIMCommand -ComputerName $Computer
+        }
+        
+        if ($results["CIM"]) {
+            $qualityScores["CIM"] = 100 + ($results["CIM"] | Measure-Object).Count
+            Write-Host "        CIM: OK ($($qualityScores["CIM"]) registros)" -ForegroundColor Green
+            
+            # Salvar no complementar
+            $cimPath = Join-Path $ComplementarPath "01_CIM"
+            if (-not (Test-Path $cimPath)) { New-Item -ItemType Directory -Path $cimPath -Force | Out-Null }
+            $results["CIM"] | Export-Csv -Path (Join-Path $cimPath "$DataType.csv") -NoTypeInformation -Encoding UTF8
+            $results["CIM"] | Format-Table -AutoSize | Out-File -FilePath (Join-Path $cimPath "$DataType.txt") -Encoding UTF8 -Width 300
+        }
+    }
+    catch {
+        Write-Host "        CIM: FALHOU ($($_.Exception.Message))" -ForegroundColor Red
+        $qualityScores["CIM"] = 0
+    }
+    
+    # METODO 2: WMI (Prioridade 2)
+    try {
+        Write-Host "      • Tentando WMI..." -ForegroundColor Gray
+        if ($isLocal) {
+            $results["WMI"] = & $WMICommand
+        } else {
+            $results["WMI"] = & $WMICommand -ComputerName $Computer
+        }
+        
+        if ($results["WMI"]) {
+            $qualityScores["WMI"] = 80 + ($results["WMI"] | Measure-Object).Count
+            Write-Host "        WMI: OK ($($qualityScores["WMI"]) registros)" -ForegroundColor Green
+            
+            # Salvar no complementar
+            $wmiPath = Join-Path $ComplementarPath "02_WMI"
+            if (-not (Test-Path $wmiPath)) { New-Item -ItemType Directory -Path $wmiPath -Force | Out-Null }
+            $results["WMI"] | Export-Csv -Path (Join-Path $wmiPath "$DataType.csv") -NoTypeInformation -Encoding UTF8
+            $results["WMI"] | Format-Table -AutoSize | Out-File -FilePath (Join-Path $wmiPath "$DataType.txt") -Encoding UTF8 -Width 300
+        }
+    }
+    catch {
+        Write-Host "        WMI: FALHOU ($($_.Exception.Message))" -ForegroundColor Red
+        $qualityScores["WMI"] = 0
+    }
+    
+    # METODO 3: WMIC (Prioridade 3)
+    try {
+        Write-Host "      • Tentando WMIC..." -ForegroundColor Gray
+        if ($isLocal) {
+            $results["WMIC"] = & $WMICCommand
+        } else {
+            $results["WMIC"] = & $WMICCommand $Computer
+        }
+        
+        if ($results["WMIC"]) {
+            $qualityScores["WMIC"] = 60 + ($results["WMIC"] | Measure-Object).Count
+            Write-Host "        WMIC: OK ($($qualityScores["WMIC"]) registros)" -ForegroundColor Green
+            
+            # Salvar no complementar
+            $wmicPath = Join-Path $ComplementarPath "03_WMIC"
+            if (-not (Test-Path $wmicPath)) { New-Item -ItemType Directory -Path $wmicPath -Force | Out-Null }
+            $results["WMIC"] | Out-File -FilePath (Join-Path $wmicPath "$DataType.txt") -Encoding UTF8 -Width 300
+        }
+    }
+    catch {
+        Write-Host "        WMIC: FALHOU ($($_.Exception.Message))" -ForegroundColor Red
+        $qualityScores["WMIC"] = 0
+    }
+    
+    # METODO 4: CMD (Prioridade 4)
+    if ($CMDCommand) {
+        try {
+            Write-Host "      • Tentando CMD..." -ForegroundColor Gray
+            $results["CMD"] = & $CMDCommand
+            
+            if ($results["CMD"]) {
+                $qualityScores["CMD"] = 40 + ($results["CMD"] -split "`n").Count
+                Write-Host "        CMD: OK ($($qualityScores["CMD"]) linhas)" -ForegroundColor Green
+                
+                # Salvar no complementar
+                $cmdPath = Join-Path $ComplementarPath "04_CMD"
+                if (-not (Test-Path $cmdPath)) { New-Item -ItemType Directory -Path $cmdPath -Force | Out-Null }
+                $results["CMD"] | Out-File -FilePath (Join-Path $cmdPath "$DataType.txt") -Encoding UTF8
+            }
+        }
+        catch {
+            Write-Host "        CMD: FALHOU ($($_.Exception.Message))" -ForegroundColor Red
+            $qualityScores["CMD"] = 0
+        }
+    }
+    
+    # Selecionar melhor resultado
+    $bestMethod = ($qualityScores.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1).Key
+    $bestResult = if ($bestMethod) { $results[$bestMethod] } else { $null }
+    
+    Write-Host "      → Melhor resultado: $bestMethod (Score: $($qualityScores[$bestMethod]))" -ForegroundColor Cyan
+    
+    return @{
+        BestResult = $bestResult
+        BestMethod = $bestMethod
+        AllResults = $results
+        QualityScores = $qualityScores
+    }
+}
+
+# NOVA FUNCAO: Informacoes de Hardware Completas
+function Get-HardwareInformationComplete {
+    param(
+        [string]$Computer,
+        [string]$OutputPath,
+        [string]$Timestamp
+    )
+    
+    Write-Host "  • Coletando informacoes completas de hardware..." -ForegroundColor White
+    
+    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
+    $hwPath = Join-Path $OutputPath $Computer "01_Hw"
+    
+    # Definir comandos para cada metodo
+    $cimCPU = { Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop }
+    $wmiCPU = { Get-WmiObject -Class Win32_Processor -ErrorAction Stop }
+    $wmicCPU = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp cpu get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic cpu get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
+    $cmdCPU = { cmd /c "wmic cpu get Name,Manufacturer,MaxClockSpeed,NumberOfCores,NumberOfLogicalProcessors /format:table 2>nul" }
+    
+    # CPU
+    $cpuResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "CPU" -CIMCommand $cimCPU -WMICommand $wmiCPU -WMICCommand $wmicCPU -CMDCommand $cmdCPU -ComplementarPath $complementarPath
+    
+    # RAM/Memory
+    $cimRAM = { Get-CimInstance -ClassName Win32_PhysicalMemory -ErrorAction Stop }
+    $wmiRAM = { Get-WmiObject -Class Win32_PhysicalMemory -ErrorAction Stop }
+    $wmicRAM = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp memorychip get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Capacity } } else { cmd /c "wmic memorychip get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Capacity } } }
+    $cmdRAM = { cmd /c "wmic memorychip get Manufacturer,PartNumber,Capacity,Speed,ConfiguredClockSpeed /format:table 2>nul" }
+    
+    $ramResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "Memory" -CIMCommand $cimRAM -WMICommand $wmiRAM -WMICCommand $wmicRAM -CMDCommand $cmdRAM -ComplementarPath $complementarPath
+    
+    # Motherboard/ComputerSystem
+    $cimMB = { Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop }
+    $wmiMB = { Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop }
+    $wmicMB = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp computersystem get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic computersystem get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
+    $cmdMB = { cmd /c "wmic computersystem get Manufacturer,Model,TotalPhysicalMemory,NumberOfProcessors /format:table 2>nul" }
+    
+    $mbResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "ComputerSystem" -CIMCommand $cimMB -WMICommand $wmiMB -WMICCommand $wmicMB -CMDCommand $cmdMB -ComplementarPath $complementarPath
+    
+    # Salvar melhores resultados na pasta principal
+    if ($cpuResults.BestResult) {
+        $cpuResults.BestResult | Export-Csv -Path (Join-Path $hwPath "${Timestamp}_CPU_Info.csv") -NoTypeInformation -Encoding UTF8
+        $cpuResults.BestResult | Format-Table -AutoSize | Out-File -FilePath (Join-Path $hwPath "${Timestamp}_CPU_Info.txt") -Encoding UTF8 -Width 300
+    }
+    
+    if ($ramResults.BestResult) {
+        $ramResults.BestResult | Export-Csv -Path (Join-Path $hwPath "${Timestamp}_Memory_Info.csv") -NoTypeInformation -Encoding UTF8
+        $ramResults.BestResult | Format-Table -AutoSize | Out-File -FilePath (Join-Path $hwPath "${Timestamp}_Memory_Info.txt") -Encoding UTF8 -Width 300
+    }
+    
+    if ($mbResults.BestResult) {
+        $mbResults.BestResult | Export-Csv -Path (Join-Path $hwPath "${Timestamp}_ComputerSystem_Info.csv") -NoTypeInformation -Encoding UTF8
+        $mbResults.BestResult | Format-Table -AutoSize | Out-File -FilePath (Join-Path $hwPath "${Timestamp}_ComputerSystem_Info.txt") -Encoding UTF8 -Width 300
+    }
+    
+    Write-Host "    Hardware coletado: CPU($($cpuResults.BestMethod)), RAM($($ramResults.BestMethod)), MB($($mbResults.BestMethod))" -ForegroundColor Green
+    
+    return @{
+        CPU = $cpuResults.BestResult
+        Memory = $ramResults.BestResult
+        ComputerSystem = $mbResults.BestResult
+        Methods = @{
+            CPU = $cpuResults.BestMethod
+            Memory = $ramResults.BestMethod
+            ComputerSystem = $mbResults.BestMethod
+        }
+    }
+}
+
+# NOVA FUNCAO: Informacoes de BIOS Completas
+function Get-BIOSInformationComplete {
+    param(
+        [string]$Computer,
+        [string]$OutputPath,
+        [string]$Timestamp
+    )
+    
+    Write-Host "  • Coletando informacoes completas de BIOS..." -ForegroundColor White
+    
+    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
+    $biosPath = Join-Path $OutputPath $Computer "02_Hw_BIOS"
+    
+    # BIOS
+    $cimBIOS = { Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop }
+    $wmiBIOS = { Get-WmiObject -Class Win32_BIOS -ErrorAction Stop }
+    $wmicBIOS = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp bios get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Version } } else { cmd /c "wmic bios get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Version } } }
+    $cmdBIOS = { cmd /c "wmic bios get Manufacturer,Name,Version,Status,BIOSVERSION,Description,InstallDate,PrimaryBios,releasedate,serialnumber /format:table 2>nul" }
+    
+    $biosResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "BIOS" -CIMCommand $cimBIOS -WMICommand $wmiBIOS -WMICCommand $wmicBIOS -CMDCommand $cmdBIOS -ComplementarPath $complementarPath
+    
+    # BaseBoard
+    $cimBoard = { Get-CimInstance -ClassName Win32_BaseBoard -ErrorAction Stop }
+    $wmiBoard = { Get-WmiObject -Class Win32_BaseBoard -ErrorAction Stop }
+    $wmicBoard = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp baseboard get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Product } } else { cmd /c "wmic baseboard get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Product } } }
+    $cmdBoard = { cmd /c "wmic baseboard get Manufacturer,Product,Version,SerialNumber /format:table 2>nul" }
+    
+    $boardResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "BaseBoard" -CIMCommand $cimBoard -WMICommand $wmiBoard -WMICCommand $wmicBoard -CMDCommand $cmdBoard -ComplementarPath $complementarPath
+    
+    # Salvar melhores resultados
+    if ($biosResults.BestResult) {
+        $biosResults.BestResult | Export-Csv -Path (Join-Path $biosPath "${Timestamp}_BIOS_Info.csv") -NoTypeInformation -Encoding UTF8
+        $biosResults.BestResult | Format-Table -AutoSize | Out-File -FilePath (Join-Path $biosPath "${Timestamp}_BIOS_Info.txt") -Encoding UTF8 -Width 300
+    }
+    
+    if ($boardResults.BestResult) {
+        $boardResults.BestResult | Export-Csv -Path (Join-Path $biosPath "${Timestamp}_BaseBoard_Info.csv") -NoTypeInformation -Encoding UTF8
+        $boardResults.BestResult | Format-Table -AutoSize | Out-File -FilePath (Join-Path $biosPath "${Timestamp}_BaseBoard_Info.txt") -Encoding UTF8 -Width 300
+    }
+    
+    Write-Host "    BIOS coletado: BIOS($($biosResults.BestMethod)), BaseBoard($($boardResults.BestMethod))" -ForegroundColor Green
+    
+    return @{
+        BIOS = $biosResults.BestResult
+        BaseBoard = $boardResults.BestResult
+        Methods = @{
+            BIOS = $biosResults.BestMethod
+            BaseBoard = $boardResults.BestMethod
+        }
+    }
+}
+
+# NOVA FUNCAO: Analise de Servicos Completa
+function Get-ServicesAnalysisComplete {
+    param(
+        [string]$Computer,
+        [string]$OutputPath,
+        [string]$Timestamp
+    )
+    
+    Write-Host "  • Coletando informacoes completas de servicos..." -ForegroundColor White
+    
+    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
+    $servicesPath = Join-Path $OutputPath $Computer "05_Servicos"
+    
+    # Services
+    $cimSvc = { Get-CimInstance -ClassName Win32_Service -ErrorAction Stop }
+    $wmiSvc = { Get-WmiObject -Class Win32_Service -ErrorAction Stop }
+    $wmicSvc = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp service get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic service get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
+    $cmdSvc = { cmd /c "wmic service get name,caption,servicetype,startmode,pathname,state /format:table 2>nul" }
+    
+    $servicesResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "Services" -CIMCommand $cimSvc -WMICommand $wmiSvc -WMICCommand $wmicSvc -CMDCommand $cmdSvc -ComplementarPath $complementarPath
+    
+    # Analise adicional dos servicos
+    if ($servicesResults.BestResult) {
+        $runningServices = $servicesResults.BestResult | Where-Object { $_.State -eq "Running" -or $_.Status -eq "OK" }
+        $stoppedServices = $servicesResults.BestResult | Where-Object { $_.State -eq "Stopped" -or $_.Status -eq "Stopped" }
+        $autoServices = $servicesResults.BestResult | Where-Object { $_.StartMode -eq "Auto" -or $_.StartMode -eq "Automatic" }
+        
+        # Servicos suspeitos (caminhos nao padrao)
+        $suspiciousServices = @()
+        foreach ($service in $servicesResults.BestResult) {
+            if ($service.PathName -and $service.PathName -notmatch "C:\\Windows\\|C:\\Program Files") {
+                $suspiciousServices += $service
+            }
+        }
+        
+        # Salvar analises especificas
+        $runningServices | Export-Csv -Path (Join-Path $servicesPath "${Timestamp}_Servicos_Executando.csv") -NoTypeInformation -Encoding UTF8
+        $autoServices | Export-Csv -Path (Join-Path $servicesPath "${Timestamp}_Servicos_Automaticos.csv") -NoTypeInformation -Encoding UTF8
+        
+        if ($suspiciousServices.Count -gt 0) {
+            $suspiciousServices | Export-Csv -Path (Join-Path $servicesPath "${Timestamp}_Servicos_Suspeitos.csv") -NoTypeInformation -Encoding UTF8
+        }
+        
+        # Relatorio de resumo
+        $serviceReport = @"
+Relatorio de Servicos do Sistema
+================================
+Data/Hora: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')
+Sistema: $Computer
+Metodo: $($servicesResults.BestMethod)
+
+Resumo:
+Total de Servicos: $($servicesResults.BestResult.Count)
+Servicos Executando: $($runningServices.Count)
+Servicos Parados: $($stoppedServices.Count)
+Servicos Automaticos: $($autoServices.Count)
+Servicos Suspeitos: $($suspiciousServices.Count)
+
+Servicos Suspeitos (caminhos nao padrao):
+$(if ($suspiciousServices.Count -gt 0) { ($suspiciousServices | ForEach-Object { "- $($_.Name): $($_.PathName)" }) -join "`n" } else { "Nenhum servico suspeito encontrado" })
+"@
+        
+        $serviceReport | Out-File -FilePath (Join-Path $servicesPath "${Timestamp}_Relatorio_Servicos.txt") -Encoding UTF8
+    }
+    
+    # Salvar resultado principal
+    if ($servicesResults.BestResult) {
+        $servicesResults.BestResult | Export-Csv -Path (Join-Path $servicesPath "${Timestamp}_Servicos_Completos.csv") -NoTypeInformation -Encoding UTF8
+        $servicesResults.BestResult | Format-Table Name, State, StartMode, PathName -AutoSize | Out-File -FilePath (Join-Path $servicesPath "${Timestamp}_Servicos_Completos.txt") -Encoding UTF8 -Width 300
+    }
+    
+    Write-Host "    Servicos coletados: $($servicesResults.BestResult.Count) servicos via $($servicesResults.BestMethod)" -ForegroundColor Green
+    
+    return @{
+        Services = $servicesResults.BestResult
+        RunningServices = $runningServices
+        SuspiciousServices = $suspiciousServices
+        Method = $servicesResults.BestMethod
+    }
+}
+
+# NOVA FUNCAO: Analise de Processos Completa
+function Get-ProcessAnalysisComplete {
+    param(
+        [string]$Computer,
+        [string]$OutputPath,
+        [string]$Timestamp
+    )
+    
+    Write-Host "  • Coletando informacoes completas de processos..." -ForegroundColor White
+    
+    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
+    $processPath = Join-Path $OutputPath $Computer "06_Processos"
+    
+    $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
+    
+    # Processes
+    $cimProc = { Get-CimInstance -ClassName Win32_Process -ErrorAction Stop }
+    $wmiProc = { Get-WmiObject -Class Win32_Process -ErrorAction Stop }
+    $wmicProc = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp process get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic process get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
+    $cmdProc = { cmd /c "tasklist /fo csv 2>nul" | ConvertFrom-Csv }
+    
+    $processResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "Processes" -CIMCommand $cimProc -WMICommand $wmiProc -WMICCommand $wmicProc -CMDCommand $cmdProc -ComplementarPath $complementarPath
+    
+    # Analise adicional apenas para execucao local
+    if ($isLocal -and $processResults.BestResult) {
+        # Get-Process para informacoes adicionais locais
+        try {
+            $psProcesses = Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet, Path, Company, Description
+            $psProcesses | Export-Csv -Path (Join-Path $processPath "${Timestamp}_Processos_GetProcess.csv") -NoTypeInformation -Encoding UTF8
+            
+            # Processos suspeitos
+            $suspiciousProcesses = @()
+            foreach ($proc in $psProcesses) {
+                if ($proc.Path -and $proc.Path -match "(temp|tmp|appdata.*temp|users.*downloads)" -and $proc.Path -notmatch "Microsoft|Windows") {
+                    $suspiciousProcesses += $proc
+                }
+                if ($proc.Company -and $proc.Company -match "(unknown|crack|hack|keygen)") {
+                    $suspiciousProcesses += $proc
+                }
+            }
+            
+            if ($suspiciousProcesses.Count -gt 0) {
+                $suspiciousProcesses | Export-Csv -Path (Join-Path $processPath "${Timestamp}_Processos_Suspeitos.csv") -NoTypeInformation -Encoding UTF8
+            }
+            
+            # Top processos por CPU e memoria
+            $topCPU = $psProcesses | Where-Object { $_.CPU } | Sort-Object CPU -Descending | Select-Object -First 10
+            $topMemory = $psProcesses | Sort-Object WorkingSet -Descending | Select-Object -First 10
+            
+            $topCPU | Export-Csv -Path (Join-Path $processPath "${Timestamp}_Top_CPU.csv") -NoTypeInformation -Encoding UTF8
+            $topMemory | Export-Csv -Path (Join-Path $processPath "${Timestamp}_Top_Memory.csv") -NoTypeInformation -Encoding UTF8
+            
+            Write-Host "    Processos adicionais coletados: Get-Process" -ForegroundColor Green
+        }
+        catch {
+            Write-Warning "Falha ao coletar processos via Get-Process: $($_.Exception.Message)"
+        }
+    }
+    
+    # Salvar resultado principal
+    if ($processResults.BestResult) {
+        $processResults.BestResult | Export-Csv -Path (Join-Path $processPath "${Timestamp}_Processos_Completos.csv") -NoTypeInformation -Encoding UTF8
+        $processResults.BestResult | Format-Table Name, ProcessId, PageFileUsage, CommandLine -AutoSize | Out-File -FilePath (Join-Path $processPath "${Timestamp}_Processos_Completos.txt") -Encoding UTF8 -Width 300
+    }
+    
+    Write-Host "    Processos coletados: $($processResults.BestResult.Count) processos via $($processResults.BestMethod)" -ForegroundColor Green
+    
+    return @{
+        Processes = $processResults.BestResult
+        Method = $processResults.BestMethod
+        SuspiciousProcesses = if ($suspiciousProcesses) { $suspiciousProcesses } else { @() }
+    }
+}
+
+# NOVA FUNCAO: Analise de Drivers Completa
+function Get-DriversAnalysisComplete {
+    param(
+        [string]$Computer,
+        [string]$OutputPath,
+        [string]$Timestamp
+    )
+    
+    Write-Host "  • Coletando informacoes completas de drivers..." -ForegroundColor White
+    
+    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
+    $driversPath = Join-Path $OutputPath $Computer "07_Drivers"
+    
+    # System Drivers
+    $cimSysDriver = { Get-CimInstance -ClassName Win32_SystemDriver -ErrorAction Stop }
+    $wmiSysDriver = { Get-WmiObject -Class Win32_SystemDriver -ErrorAction Stop }
+    $wmicSysDriver = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp sysdriver get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic sysdriver get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
+    $cmdSysDriver = { cmd /c "wmic sysdriver get Name,State,Status,PathName /format:table 2>nul" }
+    
+    $sysDriverResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "SystemDrivers" -CIMCommand $cimSysDriver -WMICommand $wmiSysDriver -WMICCommand $wmicSysDriver -CMDCommand $cmdSysDriver -ComplementarPath $complementarPath
+    
+    # PnP Drivers (somente local)
+    $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
+    if ($isLocal) {
+        try {
+            $pnpDrivers = Get-CimInstance -ClassName Win32_PnPSignedDriver -ErrorAction SilentlyContinue
+            if ($pnpDrivers) {
+                $pnpDrivers | Export-Csv -Path (Join-Path $driversPath "${Timestamp}_PnP_Drivers.csv") -NoTypeInformation -Encoding UTF8
+                $pnpDrivers | Format-Table DeviceName, DriverVersion, DriverDate, IsSigned -AutoSize | Out-File -FilePath (Join-Path $driversPath "${Timestamp}_PnP_Drivers.txt") -Encoding UTF8 -Width 300
+                
+                # Drivers nao assinados
+                $unsignedDrivers = $pnpDrivers | Where-Object { $_.IsSigned -ne $true }
+                if ($unsignedDrivers.Count -gt 0) {
+                    $unsignedDrivers | Export-Csv -Path (Join-Path $driversPath "${Timestamp}_Drivers_Nao_Assinados.csv") -NoTypeInformation -Encoding UTF8
+                }
+                
+                Write-Host "    PnP Drivers coletados: $($pnpDrivers.Count) ($($unsignedDrivers.Count) nao assinados)" -ForegroundColor Green
+            }
+        }
+        catch {
+            Write-Warning "Falha ao coletar PnP drivers: $($_.Exception.Message)"
+        }
+    }
+    
+    # Salvar resultado principal
+    if ($sysDriverResults.BestResult) {
+        $sysDriverResults.BestResult | Export-Csv -Path (Join-Path $driversPath "${Timestamp}_System_Drivers.csv") -NoTypeInformation -Encoding UTF8
+        $sysDriverResults.BestResult | Format-Table Name, State, Status, PathName -AutoSize | Out-File -FilePath (Join-Path $driversPath "${Timestamp}_System_Drivers.txt") -Encoding UTF8 -Width 300
+        
+        # Analise de drivers
+        $runningDrivers = $sysDriverResults.BestResult | Where-Object { $_.State -eq "Running" -or $_.Status -eq "OK" }
+        $stoppedDrivers = $sysDriverResults.BestResult | Where-Object { $_.State -eq "Stopped" }
+        
+        $driverReport = @"
+Relatorio de Drivers do Sistema
+===============================
+Data/Hora: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')
+Sistema: $Computer
+Metodo: $($sysDriverResults.BestMethod)
+
+Resumo:
+Total de System Drivers: $($sysDriverResults.BestResult.Count)
+Drivers Executando: $($runningDrivers.Count)
+Drivers Parados: $($stoppedDrivers.Count)
+$(if ($unsignedDrivers) { "Drivers Nao Assinados: $($unsignedDrivers.Count)" } else { "" })
+"@
+        
+        $driverReport | Out-File -FilePath (Join-Path $driversPath "${Timestamp}_Relatorio_Drivers.txt") -Encoding UTF8
+    }
+    
+    Write-Host "    System Drivers coletados: $($sysDriverResults.BestResult.Count) via $($sysDriverResults.BestMethod)" -ForegroundColor Green
+    
+    return @{
+        SystemDrivers = $sysDriverResults.BestResult
+        PnPDrivers = if ($pnpDrivers) { $pnpDrivers } else { @() }
+        UnsignedDrivers = if ($unsignedDrivers) { $unsignedDrivers } else { @() }
+        Method = $sysDriverResults.BestMethod
+    }
+}
+
+# NOVA FUNCAO: Analise de Atualizacoes Completa
+function Get-UpdatesAnalysisComplete {
+    param(
+        [string]$Computer,
+        [string]$OutputPath,
+        [string]$Timestamp
+    )
+    
+    Write-Host "  • Coletando informacoes completas de atualizacoes..." -ForegroundColor White
+    
+    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
+    $updatesPath = Join-Path $OutputPath $Computer "04_Atualizacoes"
+    
+    # HotFixes/Updates
+    $cimHotfix = { Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop }
+    $wmiHotfix = { Get-WmiObject -Class Win32_QuickFixEngineering -ErrorAction Stop }
+    $wmicHotfix = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp qfe get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.HotFixID } } else { cmd /c "wmic qfe get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.HotFixID } } }
+    $cmdHotfix = { Get-HotFix | Select-Object HotFixID, Description, InstalledBy, InstalledOn }
+    
+    $hotfixResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "HotFixes" -CIMCommand $cimHotfix -WMICommand $wmiHotfix -WMICCommand $wmicHotfix -CMDCommand $cmdHotfix -ComplementarPath $complementarPath
+    
+    # Analise adicional das atualizacoes
+    if ($hotfixResults.BestResult) {
+        # Atualizacoes de seguranca (contém KB)
+        $securityUpdates = $hotfixResults.BestResult | Where-Object { $_.Description -match "Security|Update" -or $_.HotFixID -match "KB" }
+        
+        # Atualizacoes recentes (ultimos 90 dias)
+        $recentUpdates = @()
+        foreach ($update in $hotfixResults.BestResult) {
+            if ($update.InstalledOn) {
+                try {
+                    $installDate = [DateTime]$update.InstalledOn
+                    if ($installDate -gt (Get-Date).AddDays(-90)) {
+                        $recentUpdates += $update
+                    }
+                }
+                catch { }
+            }
+        }
+        
+        # Salvar analises especificas
+        if ($securityUpdates.Count -gt 0) {
+            $securityUpdates | Export-Csv -Path (Join-Path $updatesPath "${Timestamp}_Atualizacoes_Seguranca.csv") -NoTypeInformation -Encoding UTF8
+        }
+        
+        if ($recentUpdates.Count -gt 0) {
+            $recentUpdates | Export-Csv -Path (Join-Path $updatesPath "${Timestamp}_Atualizacoes_Recentes.csv") -NoTypeInformation -Encoding UTF8
+        }
+        
+        # Relatorio de resumo
+        $updateReport = @"
+Relatorio de Atualizacoes do Sistema
+===================================
+Data/Hora: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')
+Sistema: $Computer
+Metodo: $($hotfixResults.BestMethod)
+
+Resumo:
+Total de Atualizacoes: $($hotfixResults.BestResult.Count)
+Atualizacoes de Seguranca: $($securityUpdates.Count)
+Atualizacoes Recentes (90 dias): $($recentUpdates.Count)
+
+Ultimas 10 Atualizacoes Instaladas:
+$(($hotfixResults.BestResult | Sort-Object InstalledOn -Descending | Select-Object -First 10 | ForEach-Object { "$($_.HotFixID) - $($_.Description) - $($_.InstalledOn)" }) -join "`n")
+"@
+        
+        $updateReport | Out-File -FilePath (Join-Path $updatesPath "${Timestamp}_Relatorio_Atualizacoes.txt") -Encoding UTF8
+    }
+    
+    # Salvar resultado principal
+    if ($hotfixResults.BestResult) {
+        $hotfixResults.BestResult | Export-Csv -Path (Join-Path $updatesPath "${Timestamp}_Atualizacoes_Completas.csv") -NoTypeInformation -Encoding UTF8
+        $hotfixResults.BestResult | Format-Table HotFixID, Description, InstalledBy, InstalledOn -AutoSize | Out-File -FilePath (Join-Path $updatesPath "${Timestamp}_Atualizacoes_Completas.txt") -Encoding UTF8 -Width 300
+    }
+    
+    Write-Host "    Atualizacoes coletadas: $($hotfixResults.BestResult.Count) atualizacoes via $($hotfixResults.BestMethod)" -ForegroundColor Green
+    
+    return @{
+        HotFixes = $hotfixResults.BestResult
+        SecurityUpdates = if ($securityUpdates) { $securityUpdates } else { @() }
+        RecentUpdates = if ($recentUpdates) { $recentUpdates } else { @() }
+        Method = $hotfixResults.BestMethod
+    }
+}
+
+# Funcao Get-RemoteProgram (mantida do original)
 function Get-RemoteProgram {
     [CmdletBinding()]
     param(
@@ -291,24 +859,9 @@ function Get-RemoteProgram {
                                     $wmicResults += [PSCustomObject]@{
                                         ComputerName    = $Computer
                                         ProgramName     = $fields[2].Trim()
-                                        DisplayVersion  = if ($fields[4]) {
-                                            $fields[4].Trim() 
-                                        }
-                                        else {
-                                            "" 
-                                        }
-                                        Publisher       = if ($fields[3]) {
-                                            $fields[3].Trim() 
-                                        }
-                                        else {
-                                            "" 
-                                        }
-                                        InstallDate     = if ($fields[1]) {
-                                            $fields[1].Trim() 
-                                        }
-                                        else {
-                                            "" 
-                                        }
+                                        DisplayVersion  = if ($fields[4]) { $fields[4].Trim() } else { "" }
+                                        Publisher       = if ($fields[3]) { $fields[3].Trim() } else { "" }
+                                        InstallDate     = if ($fields[1]) { $fields[1].Trim() } else { "" }
                                         InstallLocation = ""
                                         Method          = "WMIC"
                                     }
@@ -366,25 +919,13 @@ function Get-RemoteProgram {
                                             }
                                         }
                                         finally {
-                                            if ($SubKey) {
-                                                try {
-                                                    $SubKey.Close() 
-                                                }
-                                                catch { 
-                                                } 
-                                            }
+                                            if ($SubKey) { try { $SubKey.Close() } catch { } }
                                         }
                                     }
                                 }
                             }
                             finally {
-                                if ($CurrentRegKey) {
-                                    try {
-                                        $CurrentRegKey.Close() 
-                                    }
-                                    catch { 
-                                    } 
-                                }
+                                if ($CurrentRegKey) { try { $CurrentRegKey.Close() } catch { } }
                             }
                         }
                         $RegBase.Close()
@@ -407,24 +948,9 @@ function Get-RemoteProgram {
                                     $Results += [PSCustomObject]@{
                                         ComputerName    = $Computer
                                         ProgramName     = $fields[2].Trim()
-                                        DisplayVersion  = if ($fields[4]) {
-                                            $fields[4].Trim() 
-                                        }
-                                        else {
-                                            "" 
-                                        }
-                                        Publisher       = if ($fields[3]) {
-                                            $fields[3].Trim() 
-                                        }
-                                        else {
-                                            "" 
-                                        }
-                                        InstallDate     = if ($fields[1]) {
-                                            $fields[1].Trim() 
-                                        }
-                                        else {
-                                            "" 
-                                        }
+                                        DisplayVersion  = if ($fields[4]) { $fields[4].Trim() } else { "" }
+                                        Publisher       = if ($fields[3]) { $fields[3].Trim() } else { "" }
+                                        InstallDate     = if ($fields[1]) { $fields[1].Trim() } else { "" }
                                         InstallLocation = ""
                                         Method          = "WMIC"
                                     }
@@ -613,12 +1139,7 @@ function Save-ReportWithMethods {
     }
     
     foreach ($method in $AlternativeData.Keys) {
-        $priority = if ($methodPriority.ContainsKey($method)) {
-            $methodPriority[$method] 
-        }
-        else {
-            5 
-        }
+        $priority = if ($methodPriority.ContainsKey($method)) { $methodPriority[$method] } else { 5 }
         $altFileName = "${priority}_${method}_${FileName}"
         
         if ($AlternativeData[$method]) {
@@ -900,15 +1421,7 @@ function Get-DiskUsageAnalysisComplete {
                 UsedPercent = $usedPercent
                 VisualBar   = "$visualBar $usedPercent%"
                 FileSystem  = $drive.FileSystem
-                Status      = if ($usedPercent -gt 90) {
-                    "CRITICO" 
-                } 
-                elseif ($usedPercent -gt 80) {
-                    "ATENCAO" 
-                } 
-                else {
-                    "OK" 
-                }
+                Status      = if ($usedPercent -gt 90) { "CRITICO" } elseif ($usedPercent -gt 80) { "ATENCAO" } else { "OK" }
                 Method      = $drive.Method
             }
             
@@ -951,14 +1464,12 @@ function Get-DiskUsageAnalysisComplete {
                                                 $folder1FileCount += $level3Files.Count
                                             }
                                         }
-                                        catch { 
-                                        }
+                                        catch { }
                                     }
                                     
                                     $folder1Size += $folder2Size
                                 }
-                                catch { 
-                                }
+                                catch { }
                             }
                             
                             if ($folder1Size -gt 0) {
@@ -967,9 +1478,7 @@ function Get-DiskUsageAnalysisComplete {
                                 
                                 $folderBarLength = 20
                                 $folderFilledLength = [math]::Round(($folderPercent / 100) * $folderBarLength)
-                                if ($folderFilledLength -lt 1 -and $folderPercent -gt 0) {
-                                    $folderFilledLength = 1 
-                                }
+                                if ($folderFilledLength -lt 1 -and $folderPercent -gt 0) { $folderFilledLength = 1 }
                                 $folderEmptyLength = $folderBarLength - $folderFilledLength
                                 $folderBar = "[" + ("=" * $folderFilledLength) + ("-" * $folderEmptyLength) + "]"
                                 
@@ -982,21 +1491,14 @@ function Get-DiskUsageAnalysisComplete {
                                     VisualBar      = "$folderBar $folderPercent%"
                                     FileCount      = $folder1FileCount
                                     Level          = 1
-                                    Owner          = try {
- (Get-Acl $folder1.FullName -ErrorAction SilentlyContinue).Owner 
-                                    }
-                                    catch {
-                                        "Desconhecido" 
-                                    }
+                                    Owner          = try { (Get-Acl $folder1.FullName -ErrorAction SilentlyContinue).Owner } catch { "Desconhecido" }
                                 }
                             }
                         }
-                        catch { 
-                        }
+                        catch { }
                     }
                 }
-                catch { 
-                }
+                catch { }
                 
                 try {
                     $systemFolders = @("Windows", "Program Files", "Program Files (x86)", "ProgramData")
@@ -1028,8 +1530,7 @@ function Get-DiskUsageAnalysisComplete {
                         OtherPercent  = [math]::Round(($otherSize / $drive.Size) * 100, 1)
                     }
                 }
-                catch { 
-                }
+                catch { }
             }
         }
         
@@ -1183,8 +1684,7 @@ function Get-JavaProcessAnalysis {
                                     $suspiciousIndicators += "Assinatura digital invalida ou ausente"
                                 }
                             }
-                            catch { 
-                            }
+                            catch { }
                         }
                     }
                     
@@ -1195,20 +1695,11 @@ function Get-JavaProcessAnalysis {
                             CommandLine          = $commandLine
                             ExecutablePath       = $executablePath
                             SuspiciousIndicators = $suspiciousIndicators -join "; "
-                            RiskLevel            = if ($suspiciousIndicators.Count -gt 2) {
-                                "ALTO" 
-                            } 
-                            elseif ($suspiciousIndicators.Count -gt 1) {
-                                "MEDIO" 
-                            } 
-                            else {
-                                "BAIXO" 
-                            }
+                            RiskLevel            = if ($suspiciousIndicators.Count -gt 2) { "ALTO" } elseif ($suspiciousIndicators.Count -gt 1) { "MEDIO" } else { "BAIXO" }
                         }
                     }
                 }
-                catch { 
-                }
+                catch { }
             }
         }
     }
@@ -1311,18 +1802,10 @@ function Get-EventLogAnalysis {
                         ProcessId             = $event.ProcessId
                         ThreadId              = $event.ThreadId
                         Severity              = switch ($event.LevelDisplayName) {
-                            "Critical" {
-                                "CRITICO" 
-                            }
-                            "Error" {
-                                "ERRO" 
-                            }
-                            "Warning" {
-                                "AVISO" 
-                            }
-                            default {
-                                "INFO" 
-                            }
+                            "Critical" { "CRITICO" }
+                            "Error" { "ERRO" }
+                            "Warning" { "AVISO" }
+                            default { "INFO" }
                         }
                         Method                = "Get-WinEvent"
                     }
@@ -1631,8 +2114,7 @@ function Get-SecurityConfigurationAnalysis {
                             }
                         }
                     }
-                    catch { 
-                    }
+                    catch { }
                 }
             }
         }
@@ -1671,7 +2153,7 @@ function Get-SecurityConfigurationAnalysis {
     return $securityResults
 }
 
-# Funcao para criar pagina HTML simplificada (sem CSS complexo)
+# Funcao para criar pagina HTML CORRIGIDA e navegavel
 function New-HTMLNavigationPage {
     param(
         [string]$OutputPath,
@@ -1687,61 +2169,331 @@ function New-HTMLNavigationPage {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatorio de Auditoria - $Computer</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .folder { margin: 10px 0; }
-        .folder-name { font-weight: bold; cursor: pointer; padding: 5px; background-color: #f0f0f0; }
-        .file-list { margin-left: 20px; display: none; }
-        .file-item { padding: 3px; cursor: pointer; color: blue; }
-        .content-frame { width: 100%; height: 500px; border: 1px solid #ccc; }
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background-color: #f5f5f5; 
+        }
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 200px);
+        }
+        .sidebar {
+            width: 350px;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+        .content {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .folder { 
+            margin: 15px 0; 
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .folder-name { 
+            font-weight: bold; 
+            cursor: pointer; 
+            padding: 12px 15px; 
+            background: linear-gradient(135deg, #ecf0f1, #bdc3c7);
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+        .folder-name:hover {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+        }
+        .folder-name.active {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+        .file-list { 
+            margin-left: 0px; 
+            display: none; 
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }
+        .file-item { 
+            padding: 8px 20px; 
+            cursor: pointer; 
+            color: #2c3e50;
+            border-bottom: 1px solid #ecf0f1;
+            transition: background-color 0.2s ease;
+        }
+        .file-item:hover {
+            background-color: #e8f4fd;
+            color: #2980b9;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        .content-frame { 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            border-radius: 6px;
+            background: white;
+        }
+        .stats {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            flex: 1;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        .welcome-message {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 16px;
+            margin-top: 50px;
+        }
     </style>
     <script>
         function toggleFolder(element) {
+            // Fechar todas as outras pastas
+            const allFolders = document.querySelectorAll('.folder-name');
+            const allFileLists = document.querySelectorAll('.file-list');
+            
+            allFolders.forEach(folder => {
+                if (folder !== element) {
+                    folder.classList.remove('active');
+                }
+            });
+            
+            allFileLists.forEach(list => {
+                if (list !== element.nextElementSibling) {
+                    list.style.display = 'none';
+                }
+            });
+            
+            // Toggle da pasta clicada
             const fileList = element.nextElementSibling;
-            fileList.style.display = fileList.style.display === 'none' ? 'block' : 'none';
+            const isOpen = fileList.style.display === 'block';
+            
+            if (isOpen) {
+                fileList.style.display = 'none';
+                element.classList.remove('active');
+            } else {
+                fileList.style.display = 'block';
+                element.classList.add('active');
+            }
         }
         
-        function loadFile(filePath) {
-            document.getElementById('contentFrame').src = filePath;
+        function loadFile(filePath, fileName) {
+            const frame = document.getElementById('contentFrame');
+            const fileExtension = fileName.split('.').pop().toLowerCase();
+            
+            if (fileExtension === 'csv') {
+                // Para CSVs, criar uma visualizacao HTML
+                fetch(filePath)
+                    .then(response => response.text())
+                    .then(data => {
+                        const rows = data.split('\n');
+                        let html = '<table border="1" style="border-collapse: collapse; width: 100%; font-size: 12px;">';
+                        
+                        rows.forEach((row, index) => {
+                            if (row.trim()) {
+                                const cells = row.split(',');
+                                html += '<tr>';
+                                cells.forEach(cell => {
+                                    const tag = index === 0 ? 'th' : 'td';
+                                    const style = index === 0 ? 'background: #f0f0f0; font-weight: bold; padding: 8px;' : 'padding: 5px;';
+                                    html += '<' + tag + ' style="' + style + '">' + cell.replace(/"/g, '') + '</' + tag + '>';
+                                });
+                                html += '</tr>';
+                            }
+                        });
+                        
+                        html += '</table>';
+                        const blob = new Blob([html], {type: 'text/html'});
+                        frame.src = URL.createObjectURL(blob);
+                    })
+                    .catch(error => {
+                        frame.src = filePath;
+                    });
+            } else {
+                frame.src = filePath;
+            }
+            
+            // Highlight do arquivo selecionado
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.style.backgroundColor = '';
+                item.style.fontWeight = '';
+            });
+            event.target.style.backgroundColor = '#d5e8d4';
+            event.target.style.fontWeight = 'bold';
         }
+        
+        function showWelcome() {
+            const frame = document.getElementById('contentFrame');
+            const welcomeHTML = `
+                <div style="text-align: center; padding: 50px; font-family: 'Segoe UI', Arial, sans-serif;">
+                    <h2 style="color: #2c3e50;">Relatorio de Auditoria Tecnica</h2>
+                    <p style="color: #7f8c8d; font-size: 16px;">Sistema: <strong>$Computer</strong></p>
+                    <p style="color: #7f8c8d;">Timestamp: <strong>$Timestamp</strong></p>
+                    <p style="color: #7f8c8d; margin-top: 30px;">Selecione uma pasta e arquivo na navegacao lateral para visualizar o conteudo.</p>
+                    <div style="margin-top: 40px; padding: 20px; background: #ecf0f1; border-radius: 8px; display: inline-block;">
+                        <p style="color: #2c3e50; margin: 0;"><strong>Dica:</strong> Clique nas pastas para expandir e nos arquivos para visualizar</p>
+                    </div>
+                </div>
+            `;
+            const blob = new Blob([welcomeHTML], {type: 'text/html'});
+            frame.src = URL.createObjectURL(blob);
+        }
+        
+        window.onload = function() {
+            showWelcome();
+        };
     </script>
 </head>
 <body>
-    <h1>Relatorio de Auditoria - $Computer</h1>
-    <p>Sistema: $Computer | Gerado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss') | Timestamp: $Timestamp</p>
+    <div class="header">
+        <h1>🔍 Relatorio de Auditoria Tecnica - Sistema SCADA</h1>
+        <p>Sistema: <strong>$Computer</strong> | Gerado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss') | Timestamp: <strong>$Timestamp</strong></p>
+    </div>
     
-    <h2>Estrutura de Arquivos</h2>
+    <div class="stats">
+"@
+
+    # Calcular estatisticas
+    $totalFolders = $Script:FOLDER_STRUCTURE.Count
+    $totalFiles = 0
+    $emptyFolders = 0
+    
+    foreach ($folderName in $Script:FOLDER_STRUCTURE.Keys) {
+        $folderPath = Join-Path $OutputPath $Computer $folderName
+        if (Test-Path $folderPath) {
+            $fileCount = (Get-ChildItem -Path $folderPath -File -ErrorAction SilentlyContinue).Count
+            $totalFiles += $fileCount
+            if ($fileCount -eq 0) { $emptyFolders++ }
+        } else {
+            $emptyFolders++
+        }
+    }
+
+    $htmlContent += @"
+        <div class="stat-card">
+            <div class="stat-number">$totalFolders</div>
+            <div class="stat-label">CATEGORIAS</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">$totalFiles</div>
+            <div class="stat-label">ARQUIVOS GERADOS</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">$($totalFolders - $emptyFolders)</div>
+            <div class="stat-label">PASTAS COM DADOS</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">$emptyFolders</div>
+            <div class="stat-label">PASTAS VAZIAS</div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <h3 style="margin-top: 0; color: #2c3e50;">📂 Estrutura de Arquivos</h3>
 "@
 
     foreach ($folderName in ($Script:FOLDER_STRUCTURE.Keys | Sort-Object)) {
         $folderPath = Join-Path $OutputPath $Computer $folderName
         $description = $Script:FOLDER_STRUCTURE[$folderName]
+        $fileCount = 0
+        
+        if (Test-Path $folderPath) {
+            $fileCount = (Get-ChildItem -Path $folderPath -File -ErrorAction SilentlyContinue).Count
+        }
+        
+        $statusIcon = if ($fileCount -gt 0) { "✅" } else { "❌" }
         
         $htmlContent += @"
-    <div class="folder">
-        <div class="folder-name" onclick="toggleFolder(this)">$folderName ($description)</div>
-        <div class="file-list">
+        <div class="folder">
+            <div class="folder-name" onclick="toggleFolder(this)">
+                $statusIcon $folderName ($fileCount arquivos)
+                <div style="font-size: 11px; font-weight: normal; color: #666; margin-top: 3px;">$description</div>
+            </div>
+            <div class="file-list">
 "@
         
         if (Test-Path $folderPath) {
-            $files = Get-ChildItem -Path $folderPath -File | Sort-Object Name
+            $files = Get-ChildItem -Path $folderPath -File -ErrorAction SilentlyContinue | Sort-Object Name
             foreach ($file in $files) {
                 $relativePath = "./$Computer/$folderName/$($file.Name)"
+                $fileSize = if ($file.Length -gt 1MB) { 
+                    "$([math]::Round($file.Length/1MB, 1)) MB" 
+                } elseif ($file.Length -gt 1KB) { 
+                    "$([math]::Round($file.Length/1KB, 1)) KB" 
+                } else { 
+                    "$($file.Length) B" 
+                }
+                
                 $htmlContent += @"
-            <div class="file-item" onclick="loadFile('$relativePath')">$($file.Name)</div>
+                <div class="file-item" onclick="loadFile('$relativePath', '$($file.Name)')">
+                    📄 $($file.Name) <span style="color: #999; font-size: 10px;">($fileSize)</span>
+                </div>
 "@
             }
         }
         
+        if ($fileCount -eq 0) {
+            $htmlContent += @"
+                <div class="file-item" style="color: #999; font-style: italic;">
+                    Nenhum arquivo gerado
+                </div>
+"@
+        }
+        
         $htmlContent += @"
+            </div>
         </div>
-    </div>
 "@
     }
 
     $htmlContent += @"
+        </div>
+        
+        <div class="content">
+            <iframe id="contentFrame" class="content-frame"></iframe>
+        </div>
+    </div>
     
-    <h2>Conteudo do Arquivo</h2>
-    <iframe id="contentFrame" class="content-frame"></iframe>
+    <div style="text-align: center; margin-top: 20px; color: #7f8c8d; font-size: 12px;">
+        <p>Baseline NMR5 v10.2 - Sistema de Auditoria Tecnica SCADA | Gerado automaticamente</p>
+    </div>
 </body>
 </html>
 "@
@@ -1749,11 +2501,11 @@ function New-HTMLNavigationPage {
     $htmlPath = Join-Path $OutputPath "$Computer.html"
     $htmlContent | Out-File -FilePath $htmlPath -Encoding UTF8
     
-    Write-Host "Pagina HTML criada: $htmlPath" -ForegroundColor Green
+    Write-Host "Pagina HTML navegavel criada: $htmlPath" -ForegroundColor Green
     return $htmlPath
 }
 
-# Funcao para gerar relatorio final consolidado
+# Funcao para gerar relatorio final consolidado CORRIGIDO
 function New-ConsolidatedReportComplete {
     param(
         [string]$Computer,
@@ -1762,10 +2514,17 @@ function New-ConsolidatedReportComplete {
         [string]$Timestamp,
         [hashtable]$SystemInfo,
         [array]$SoftwareList,
+        [hashtable]$HardwareInfo,
+        [hashtable]$BIOSInfo,
+        [hashtable]$ServicesInfo,
+        [hashtable]$ProcessInfo,
+        [hashtable]$DriversInfo,
+        [hashtable]$UpdatesInfo,
         [hashtable]$DiskResults,
         [hashtable]$NetworkResults,
         [hashtable]$JavaResults,
-        [array]$EventAnalysis
+        [array]$EventAnalysis,
+        [hashtable]$SecurityResults
     )
     
     Write-Host "Gerando relatorio consolidado completo..." -ForegroundColor Cyan
@@ -1773,94 +2532,30 @@ function New-ConsolidatedReportComplete {
     try {
         $reportPath = Join-Path $OutputPath $Computer "14_Relatorio"
         
-        $totalSoftware = if ($SoftwareList) {
-            $SoftwareList.Count 
-        }
-        else {
-            0 
-        }
+        # Calcular metricas
+        $totalSoftware = if ($SoftwareList) { $SoftwareList.Count } else { 0 }
         $suspiciousSoftware = if ($SoftwareList) {
             $SoftwareList | Where-Object { 
                 $name = $_.ProgramName.ToLower()
                 @("eval", "trial", "demo", "crack", "keygen", "patch", "portable", "unknown") | ForEach-Object { 
-                    if ($name -match $_) {
-                        return $true 
-                    } 
+                    if ($name -match $_) { return $true } 
                 }
             }
-        }
-        else {
-            @() 
-        }
+        } else { @() }
         
-        $totalServices = if ($SystemInfo.Services) {
-            $SystemInfo.Services.Count 
-        }
-        else {
-            0 
-        }
-        $runningServices = if ($SystemInfo.Services) {
- ($SystemInfo.Services | Where-Object { $_.State -eq 'Running' }).Count 
-        }
-        else {
-            0 
-        }
-        $totalProcesses = if ($SystemInfo.Processes) {
-            $SystemInfo.Processes.Count 
-        }
-        else {
-            0 
-        }
-        $totalDrivers = if ($SystemInfo.SystemDrivers) {
-            $SystemInfo.SystemDrivers.Count 
-        }
-        else {
-            0 
-        }
-        $loadedDrivers = if ($SystemInfo.SystemDrivers) {
- ($SystemInfo.SystemDrivers | Where-Object { $_.State -eq 'Running' }).Count 
-        }
-        else {
-            0 
-        }
-        $totalUpdates = if ($SystemInfo.HotFixes) {
-            $SystemInfo.HotFixes.Count 
-        }
-        else {
-            0 
-        }
-        $criticalEvents = if ($EventAnalysis) {
- ($EventAnalysis | Where-Object { $_.Level -eq "Critical" -and $_.TimeCreated -gt (Get-Date).AddDays(-7) }).Count 
-        }
-        else {
-            0 
-        }
-        $errorEvents = if ($EventAnalysis) {
- ($EventAnalysis | Where-Object { $_.Level -eq "Error" -and $_.TimeCreated -gt (Get-Date).AddDays(-7) }).Count 
-        }
-        else {
-            0 
-        }
+        $totalServices = if ($ServicesInfo.Services) { $ServicesInfo.Services.Count } else { 0 }
+        $runningServices = if ($ServicesInfo.RunningServices) { $ServicesInfo.RunningServices.Count } else { 0 }
+        $totalProcesses = if ($ProcessInfo.Processes) { $ProcessInfo.Processes.Count } else { 0 }
+        $totalDrivers = if ($DriversInfo.SystemDrivers) { $DriversInfo.SystemDrivers.Count } else { 0 }
+        $loadedDrivers = if ($DriversInfo.SystemDrivers) { ($DriversInfo.SystemDrivers | Where-Object { $_.State -eq 'Running' }).Count } else { 0 }
+        $totalUpdates = if ($UpdatesInfo.HotFixes) { $UpdatesInfo.HotFixes.Count } else { 0 }
+        $criticalEvents = if ($EventAnalysis) { ($EventAnalysis | Where-Object { $_.Level -eq "Critical" -and $_.TimeCreated -gt (Get-Date).AddDays(-7) }).Count } else { 0 }
+        $errorEvents = if ($EventAnalysis) { ($EventAnalysis | Where-Object { $_.Level -eq "Error" -and $_.TimeCreated -gt (Get-Date).AddDays(-7) }).Count } else { 0 }
         
-        $suspiciousJava = if ($JavaResults.SuspiciousJava) {
-            $JavaResults.SuspiciousJava.Count 
-        }
-        else {
-            0 
-        }
-        $suspiciousNetwork = if ($NetworkResults.SuspiciousActivity) {
-            $NetworkResults.SuspiciousActivity.Count 
-        }
-        else {
-            0 
-        }
+        $suspiciousJava = if ($JavaResults.SuspiciousJava) { $JavaResults.SuspiciousJava.Count } else { 0 }
+        $suspiciousNetwork = if ($NetworkResults.SuspiciousActivity) { $NetworkResults.SuspiciousActivity.Count } else { 0 }
         
-        $auditDuration = if ($Global:AuditStartTime) {
- ((Get-Date) - $Global:AuditStartTime).ToString('hh\:mm\:ss') 
-        }
-        else {
-            "Nao disponivel" 
-        }
+        $auditDuration = if ($Global:AuditStartTime) { ((Get-Date) - $Global:AuditStartTime).ToString('hh\:mm\:ss') } else { "Nao disponivel" }
         
         $consolidatedReport = @"
 ################################################################################
@@ -1892,6 +2587,12 @@ $(if ($SystemInfo.OSInfo -and $SystemInfo.OSInfo.LastBootUpTime) { "Ultimo Boot:
 • Eventos de Erro (7 dias): $errorEvents
 • Processos Java Suspeitos: $suspiciousJava
 • Atividades de Rede Incomuns: $suspiciousNetwork
+
+ Informacoes de Hardware:
+================================================================================
+$(if ($HardwareInfo.CPU) { "CPU: $($HardwareInfo.CPU.Name) ($($HardwareInfo.CPU.NumberOfCores) cores)" } else { "CPU: Nao disponivel" })
+$(if ($HardwareInfo.Memory) { "Memoria RAM: $([math]::Round($HardwareInfo.Memory.Capacity/1GB, 2)) GB" } else { "Memoria RAM: Nao disponivel" })
+$(if ($BIOSInfo.BIOS) { "BIOS: $($BIOSInfo.BIOS.Manufacturer) $($BIOSInfo.BIOS.Version)" } else { "BIOS: Nao disponivel" })
 
  Analise de Armazenamento:
 ================================================================================
@@ -2045,6 +2746,15 @@ Metodo: $($disk.Method)
 • Diretorios Analisados: $($Script:FOLDER_STRUCTURE.Count)
 • Total de Arquivos Gerados: $(if (Test-Path (Join-Path $OutputPath $Computer)) { (Get-ChildItem -Path (Join-Path $OutputPath $Computer) -Recurse -File).Count } else { "Nao disponivel" })
 
+ Metodos de Coleta por Categoria:
+================================================================================
+Hardware: $(if ($HardwareInfo.Methods) { "CPU($($HardwareInfo.Methods.CPU)), RAM($($HardwareInfo.Methods.Memory)), MB($($HardwareInfo.Methods.ComputerSystem))" } else { "Nao coletado" })
+BIOS: $(if ($BIOSInfo.Methods) { "BIOS($($BIOSInfo.Methods.BIOS)), BaseBoard($($BIOSInfo.Methods.BaseBoard))" } else { "Nao coletado" })
+Servicos: $(if ($ServicesInfo.Method) { $ServicesInfo.Method } else { "Nao coletado" })
+Processos: $(if ($ProcessInfo.Method) { $ProcessInfo.Method } else { "Nao coletado" })
+Drivers: $(if ($DriversInfo.Method) { $DriversInfo.Method } else { "Nao coletado" })
+Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao coletado" })
+
  Arquivos de Saida Gerados:
 ================================================================================
 "@
@@ -2079,12 +2789,7 @@ Metodo: $($disk.Method)
                 Domain        = $Domain
                 Timestamp     = $Timestamp
                 AuditDuration = $auditDuration
-                OSInfo        = if ($SystemInfo.OSInfo) {
-                    $SystemInfo.OSInfo.Caption + " " + $SystemInfo.OSInfo.Version 
-                }
-                else {
-                    "Nao disponivel" 
-                }
+                OSInfo        = if ($SystemInfo.OSInfo) { $SystemInfo.OSInfo.Caption + " " + $SystemInfo.OSInfo.Version } else { "Nao disponivel" }
             }
             Metrics         = @{
                 TotalSoftware      = $totalSoftware
@@ -2092,21 +2797,16 @@ Metodo: $($disk.Method)
                 TotalServices      = $totalServices
                 RunningServices    = $runningServices
                 TotalProcesses     = $totalProcesses
+                TotalDrivers       = $totalDrivers
+                LoadedDrivers      = $loadedDrivers
+                TotalUpdates       = $totalUpdates
                 CriticalEvents     = $criticalEvents
                 ErrorEvents        = $errorEvents
                 SuspiciousJava     = $suspiciousJava
                 SuspiciousNetwork  = $suspiciousNetwork
             }
             Recommendations = $recommendations
-            Status          = if ($recommendations.Count -eq 0) {
-                "OK" 
-            } 
-            elseif ($recommendations -match "URGENTE") {
-                "CRITICO" 
-            } 
-            else {
-                "ATENCAO" 
-            }
+            Status          = if ($recommendations.Count -eq 0) { "OK" } elseif ($recommendations -match "URGENTE") { "CRITICO" } else { "ATENCAO" }
         }
         
         $jsonReport | ConvertTo-Json -Depth 3 | Out-File -FilePath (Join-Path $reportPath "Relatorio_Final_$Computer.json") -Encoding UTF8
@@ -2128,7 +2828,7 @@ Metodo: $($disk.Method)
     }
 }
 
-# Funcao principal para execucao da auditoria
+# Funcao principal CORRIGIDA para execucao da auditoria
 function Start-SystemAudit {
     param(
         [string]$Computer = "localhost",
@@ -2140,7 +2840,7 @@ function Start-SystemAudit {
     $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
     
     Write-Host "################################################################################" -ForegroundColor Cyan
-    Write-Host "                    BASELINE NMR5 10.2 - PIC.EE.0246" -ForegroundColor Cyan
+    Write-Host "                    BASELINE NMR5 10.2 - PIC.EE.0246 CORRIGIDO" -ForegroundColor Cyan
     Write-Host "################################################################################" -ForegroundColor Cyan
     Write-Host "$Script:SCRIPT_HEADER" -ForegroundColor White
     Write-Host "Compatibilidade: $Script:SCRIPT_COMPATIBILITY" -ForegroundColor Gray
@@ -2173,12 +2873,7 @@ function Start-SystemAudit {
     $osVersion = Test-OSVersion
     $currentEnvironment = Get-Environment
     
-    Write-Host "Privilegios admin: $(if ($adminPrivilege) { 'Sim' } else { 'Nao' })" -ForegroundColor $(if ($adminPrivilege) {
-            'Green' 
-        }
-        else {
-            'Yellow' 
-        })
+    Write-Host "Privilegios admin: $(if ($adminPrivilege) { 'Sim' } else { 'Nao' })" -ForegroundColor $(if ($adminPrivilege) { 'Green' } else { 'Yellow' })
     Write-Host "Versao OS: $osVersion" -ForegroundColor Gray
     
     if (-not $psVersion) {
@@ -2195,11 +2890,19 @@ function Start-SystemAudit {
     Write-Host "################################################################################" -ForegroundColor Green
     
     # 1. Informacoes do Sistema
-    Write-Host "`n[1/8] Coletando informacoes completas do sistema..." -ForegroundColor Yellow
+    Write-Host "`n[1/11] Coletando informacoes completas do sistema..." -ForegroundColor Yellow
     $systemInfo = Get-SystemInformationComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 2. Software instalado
-    Write-Host "`n[2/8] Analisando software instalado..." -ForegroundColor Yellow
+    # 2. Hardware 
+    Write-Host "`n[2/11] Coletando informacoes de hardware..." -ForegroundColor Yellow
+    $hardwareInfo = Get-HardwareInformationComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
+    
+    # 3. BIOS
+    Write-Host "`n[3/11] Coletando informacoes de BIOS..." -ForegroundColor Yellow
+    $biosInfo = Get-BIOSInformationComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
+    
+    # 4. Software instalado
+    Write-Host "`n[4/11] Analisando software instalado..." -ForegroundColor Yellow
     $softwareList = Get-RemoteProgram -ComputerName $Computer
     if ($softwareList -and $softwareList.Count -gt 0) {
         $softwarePath = Join-Path $OutputBasePath $Computer "03_Software"
@@ -2208,62 +2911,55 @@ function Start-SystemAudit {
         Write-Host "  Software coletado: $($softwareList.Count) programas" -ForegroundColor Green
     }
     
-    # 3. Analise de disco
-    Write-Host "`n[3/8] Executando analise detalhada de disco..." -ForegroundColor Yellow
+    # 5. Atualizacoes
+    Write-Host "`n[5/11] Coletando atualizacoes e patches..." -ForegroundColor Yellow
+    $updatesInfo = Get-UpdatesAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
+    
+    # 6. Servicos
+    Write-Host "`n[6/11] Analisando servicos do sistema..." -ForegroundColor Yellow
+    $servicesInfo = Get-ServicesAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
+    
+    # 7. Processos
+    Write-Host "`n[7/11] Analisando processos em execucao..." -ForegroundColor Yellow
+    $processInfo = Get-ProcessAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
+    
+    # 8. Drivers
+    Write-Host "`n[8/11] Coletando informacoes de drivers..." -ForegroundColor Yellow
+    $driversInfo = Get-DriversAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
+    
+    # 9. Analise de disco
+    Write-Host "`n[9/11] Executando analise detalhada de disco..." -ForegroundColor Yellow
     $diskResults = Get-DiskUsageAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 4. Analise de rede
-    Write-Host "`n[4/8] Analisando configuracoes de rede..." -ForegroundColor Yellow
+    # 10. Analise de rede
+    Write-Host "`n[10/11] Analisando configuracoes de rede..." -ForegroundColor Yellow
     $networkResults = Get-NetworkAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 5. Processos Java
-    Write-Host "`n[5/8] Verificando processos Java suspeitos..." -ForegroundColor Yellow
+    # 11. Processos Java
+    Write-Host "`n[11/11] Verificando processos Java suspeitos..." -ForegroundColor Yellow
     $javaResults = Get-JavaProcessAnalysis -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 6. Eventos do sistema
-    Write-Host "`n[6/8] Coletando logs de eventos..." -ForegroundColor Yellow
+    # Eventos do sistema
+    Write-Host "`nColetando logs de eventos..." -ForegroundColor Yellow
     $eventAnalysis = Get-EventLogAnalysis -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 7. Timeline de eventos
-    Write-Host "`n[7/8] Gerando timeline de eventos..." -ForegroundColor Yellow
+    # Timeline de eventos
+    Write-Host "`nGerando timeline de eventos..." -ForegroundColor Yellow
     New-EventTimelineReport -EventAnalysis $eventAnalysis -OutputPath $OutputBasePath -Computer $Computer -Timestamp $timestamp
     
-    # 8. Configuracoes de seguranca
-    Write-Host "`n[8/8] Analisando configuracoes de seguranca..." -ForegroundColor Yellow
+    # Configuracoes de seguranca
+    Write-Host "`nAnalisando configuracoes de seguranca..." -ForegroundColor Yellow
     $securityResults = Get-SecurityConfigurationAnalysis -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
-    Write-Host "  Configuracoes de seguranca coletadas: $(if ($securityResults) { 'OK' } else { 'Falha' })" -ForegroundColor $(if ($securityResults) {
-            'Green' 
-        }
-        else {
-            'Red' 
-        })
     
     # Gerar relatorio final
     Write-Host "`n################################################################################" -ForegroundColor Magenta
     Write-Host "                           GERANDO RELATORIO FINAL" -ForegroundColor Magenta
     Write-Host "################################################################################" -ForegroundColor Magenta
     
-    $finalReport = New-ConsolidatedReportComplete -Computer $Computer -OutputPath $OutputBasePath -Domain $Domain -Timestamp $timestamp -SystemInfo $systemInfo -SoftwareList $softwareList -DiskResults $diskResults -NetworkResults $networkResults -JavaResults $javaResults -EventAnalysis $eventAnalysis
-    
-    # Informacoes adicionais no console
-    if ($securityResults) {
-        $userCount = if ($securityResults.LocalUsers) {
-            $securityResults.LocalUsers.Count 
-        }
-        else {
-            0 
-        }
-        $groupCount = if ($securityResults.LocalGroups) {
-            $securityResults.LocalGroups.Count 
-        }
-        else {
-            0 
-        }
-        Write-Host "Seguranca: $userCount usuarios locais, $groupCount grupos locais" -ForegroundColor Gray
-    }
+    $finalReport = New-ConsolidatedReportComplete -Computer $Computer -OutputPath $OutputBasePath -Domain $Domain -Timestamp $timestamp -SystemInfo $systemInfo -SoftwareList $softwareList -HardwareInfo $hardwareInfo -BIOSInfo $biosInfo -ServicesInfo $servicesInfo -ProcessInfo $processInfo -DriversInfo $driversInfo -UpdatesInfo $updatesInfo -DiskResults $diskResults -NetworkResults $networkResults -JavaResults $javaResults -EventAnalysis $eventAnalysis -SecurityResults $securityResults
     
     # Criar pagina HTML de navegacao
-    Write-Host "`nCriando pagina HTML de navegacao..." -ForegroundColor Yellow
+    Write-Host "`nCriando pagina HTML navegavel..." -ForegroundColor Yellow
     $htmlPage = New-HTMLNavigationPage -OutputPath $OutputBasePath -Computer $Computer -Timestamp $timestamp
     
     # Resumo final
@@ -2276,29 +2972,16 @@ function Start-SystemAudit {
     Write-Host "Sistema auditado: $Computer" -ForegroundColor White
     Write-Host "Pasta de saida: $OutputBasePath" -ForegroundColor White
     Write-Host "Pagina HTML: $htmlPage" -ForegroundColor White
-    Write-Host "Privilegios admin: $(if ($adminPrivilege) { 'Disponivel' } else { 'Limitado' })" -ForegroundColor $(if ($adminPrivilege) {
-            'Green' 
-        }
-        else {
-            'Yellow' 
-        })
+    Write-Host "Privilegios admin: $(if ($adminPrivilege) { 'Disponivel' } else { 'Limitado' })" -ForegroundColor $(if ($adminPrivilege) { 'Green' } else { 'Yellow' })
     Write-Host "Versao OS: $osVersion" -ForegroundColor Gray
     
     if ($finalReport) {
         Write-Host "Status do sistema: $($finalReport.Status)" -ForegroundColor $(
             switch ($finalReport.Status) {
-                "OK" {
-                    "Green" 
-                }
-                "ATENCAO" {
-                    "Yellow" 
-                }
-                "CRITICO" {
-                    "Red" 
-                }
-                default {
-                    "White" 
-                }
+                "OK" { "Green" }
+                "ATENCAO" { "Yellow" }
+                "CRITICO" { "Red" }
+                default { "White" }
             }
         )
         
@@ -2322,12 +3005,7 @@ function Start-SystemAudit {
         HtmlPage    = $htmlPage
         FinalReport = $finalReport
         Duration    = $auditDuration
-        Status      = if ($finalReport) {
-            $finalReport.Status 
-        }
-        else {
-            "CONCLUIDO" 
-        }
+        Status      = if ($finalReport) { $finalReport.Status } else { "CONCLUIDO" }
     }
 }
 
@@ -2435,18 +3113,10 @@ function Invoke-SystemAudit {
         $statusSummary = $results | Group-Object Status
         foreach ($status in $statusSummary) {
             $color = switch ($status.Name) {
-                "OK" {
-                    "Green" 
-                }
-                "ATENCAO" {
-                    "Yellow" 
-                }
-                "CRITICO" {
-                    "Red" 
-                }
-                default {
-                    "White" 
-                }
+                "OK" { "Green" }
+                "ATENCAO" { "Yellow" }
+                "CRITICO" { "Red" }
+                default { "White" }
             }
             Write-Host "$($status.Name): $($status.Count) sistemas" -ForegroundColor $color
         }
