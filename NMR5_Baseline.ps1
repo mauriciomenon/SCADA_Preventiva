@@ -22,7 +22,7 @@ $Script:SCRIPT_HEADER = @"
 Baseline_NMR5 10.2 para PIC.EE.0246
 Autor: Mauricio Menon
 Versão inicial: FAT NMR5 Houston (2018)
-Versão atual 27/06/2025 - CORRIGIDA
+Versão atual 27/06/2025 
 "@
 
 $Script:SCRIPT_COMPATIBILITY = "PowerShell 5.1+ / PowerShell 7+ / Windows Server 2012 R2+ / Windows 10+"
@@ -226,7 +226,7 @@ function Get-TargetList {
     return $targets
 }
 
-# Funcao NOVA: Executar comando com todos os metodos e avaliar qualidade
+# Executar comando com todos os metodos (confiabilidade)
 function Invoke-AllMethodsWithQuality {
     param(
         [string]$Computer,

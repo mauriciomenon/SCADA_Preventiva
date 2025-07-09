@@ -1,4 +1,4 @@
-# Baseline_NMR5 10.2.3 para PIC.EE.0246 - VERSAO CORRIGIDA
+# Baseline_NMR5 10.2.2 para PIC.EE.0246 - VERSAO CORRIGIDA
 # Autor: Mauricio Menon
 # Versão inicial: FAT NMR5 Houston (2018)
 # Versão atual 27/06/2025 - CORRIGIDA
@@ -22,7 +22,7 @@ $Script:SCRIPT_HEADER = @"
 Baseline_NMR5 10.2 para PIC.EE.0246
 Autor: Mauricio Menon
 Versão inicial: FAT NMR5 Houston (2018)
-Versão atual 27/06/2025 - CORRIGIDA
+Versão atual 27/06/2025 
 "@
 
 $Script:SCRIPT_COMPATIBILITY = "PowerShell 5.1+ / PowerShell 7+ / Windows Server 2012 R2+ / Windows 10+"
@@ -226,7 +226,7 @@ function Get-TargetList {
     return $targets
 }
 
-# Funcao NOVA: Executar comando com todos os metodos e avaliar qualidade
+# Executar comando com todos os metodos (confiabilidade)
 function Invoke-AllMethodsWithQuality {
     param(
         [string]$Computer,
@@ -2326,7 +2326,7 @@ function Get-SecurityConfigurationAnalysis {
     return $securityResults
 }
 
-# NOVA FUNCAO: Criar pagina HTML navegavel funcional
+# Funcao para criar pagina HTML CORRIGIDA e navegavel
 function New-HTMLNavigationPage {
     param(
         [string]$OutputPath,
@@ -2343,153 +2343,144 @@ function New-HTMLNavigationPage {
     <title>Relatorio de Auditoria - $Computer</title>
     <style>
         body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            font-family: 'Segoe UI', Arial, sans-serif; 
             margin: 0; 
             padding: 20px; 
             background-color: #f5f5f5; 
         }
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #2c3e50, #3498db);
             color: white;
             padding: 20px;
-            border-radius: 10px;
+            border-radius: 8px;
             margin-bottom: 20px;
             text-align: center;
         }
-        .container { display: flex; gap: 20px; }
-        .sidebar { 
-            width: 400px; 
-            background: white; 
-            border-radius: 10px; 
-            padding: 20px; 
-            height: fit-content;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        .container {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 200px);
         }
-        .content { 
-            flex: 1; 
-            background: white; 
-            border-radius: 10px; 
+        .sidebar {
+            width: 350px;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+        .content {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
             padding: 20px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         .folder { 
-            margin: 10px 0; 
-            border: 1px solid #e0e0e0; 
-            border-radius: 8px; 
+            margin: 15px 0; 
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
             overflow: hidden;
         }
-        .folder-header { 
-            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-            color: white;
+        .folder-name { 
+            font-weight: bold; 
             cursor: pointer; 
             padding: 12px 15px; 
-            font-weight: bold;
+            background: linear-gradient(135deg, #ecf0f1, #bdc3c7);
             transition: all 0.3s ease;
+            user-select: none;
         }
-        .folder-header:hover { 
-            background: linear-gradient(135deg, #45a049 0%, #3d8b40 100%);
+        .folder-name:hover {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
         }
-        .folder-header.active {
-            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+        .folder-name.active {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
         }
         .file-list { 
+            margin-left: 0px; 
             display: none; 
-            background: #f9f9f9;
+            background: #f8f9fa;
             border-top: 1px solid #e0e0e0;
         }
         .file-item { 
-            padding: 8px 15px; 
+            padding: 8px 20px; 
             cursor: pointer; 
-            color: #1976D2; 
-            border-bottom: 1px solid #eee;
-            transition: background 0.2s ease;
+            color: #2c3e50;
+            border-bottom: 1px solid #ecf0f1;
+            transition: background-color 0.2s ease;
         }
-        .file-item:hover { 
-            background: #e3f2fd; 
-            color: #0d47a1;
+        .file-item:hover {
+            background-color: #e8f4fd;
+            color: #2980b9;
         }
-        .file-item:last-child { border-bottom: none; }
+        .file-item:last-child {
+            border-bottom: none;
+        }
         .content-frame { 
             width: 100%; 
-            height: 600px; 
-            border: 2px solid #e0e0e0; 
-            border-radius: 8px;
+            height: 100%; 
+            border: none; 
+            border-radius: 6px;
             background: white;
         }
         .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            display: flex;
             gap: 15px;
             margin-bottom: 20px;
         }
         .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: white;
             padding: 15px;
-            border-radius: 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            flex: 1;
             text-align: center;
         }
-        .stat-number { font-size: 24px; font-weight: bold; }
-        .stat-label { font-size: 12px; opacity: 0.9; }
-        .search-box {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            font-size: 14px;
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
         }
-        .search-box:focus {
-            outline: none;
-            border-color: #2196F3;
+        .stat-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        .welcome-message {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 16px;
+            margin-top: 50px;
         }
     </style>
     <script>
-        let allFolders = [];
-        let allFiles = [];
-        
-        function initializePage() {
-            // Coletar todas as pastas e arquivos
-            const folders = document.querySelectorAll('.folder');
-            folders.forEach(folder => {
-                const header = folder.querySelector('.folder-header');
-                const fileList = folder.querySelector('.file-list');
-                const files = folder.querySelectorAll('.file-item');
-                
-                allFolders.push({
-                    element: folder,
-                    header: header,
-                    fileList: fileList,
-                    name: header.textContent.toLowerCase(),
-                    files: Array.from(files)
-                });
-                
-                files.forEach(file => {
-                    allFiles.push({
-                        element: file,
-                        name: file.textContent.toLowerCase(),
-                        folder: folder
-                    });
-                });
-            });
-            
-            updateStats();
-        }
-        
         function toggleFolder(element) {
-            const fileList = element.nextElementSibling;
-            const isVisible = fileList.style.display === 'block';
-            
             // Fechar todas as outras pastas
-            document.querySelectorAll('.file-list').forEach(list => {
-                list.style.display = 'none';
-            });
-            document.querySelectorAll('.folder-header').forEach(header => {
-                header.classList.remove('active');
+            const allFolders = document.querySelectorAll('.folder-name');
+            const allFileLists = document.querySelectorAll('.file-list');
+            
+            allFolders.forEach(folder => {
+                if (folder !== element) {
+                    folder.classList.remove('active');
+                }
             });
             
-            // Abrir/fechar a pasta clicada
-            if (!isVisible) {
+            allFileLists.forEach(list => {
+                if (list !== element.nextElementSibling) {
+                    list.style.display = 'none';
+                }
+            });
+            
+            // Toggle da pasta clicada
+            const fileList = element.nextElementSibling;
+            const isOpen = fileList.style.display === 'block';
+            
+            if (isOpen) {
+                fileList.style.display = 'none';
+                element.classList.remove('active');
+            } else {
                 fileList.style.display = 'block';
                 element.classList.add('active');
             }
@@ -2497,112 +2488,181 @@ function New-HTMLNavigationPage {
         
         function loadFile(filePath, fileName) {
             const frame = document.getElementById('contentFrame');
-            frame.src = filePath;
+            const fileExtension = fileName.split('.').pop().toLowerCase();
             
-            // Atualizar titulo do conteudo
-            document.getElementById('currentFile').textContent = fileName;
-        }
-        
-        function searchFiles() {
-            const query = document.getElementById('searchBox').value.toLowerCase();
-            
-            allFolders.forEach(folder => {
-                let hasVisibleFiles = false;
-                
-                folder.files.forEach(file => {
-                    const isVisible = file.name.includes(query) || folder.name.includes(query);
-                    file.element.style.display = isVisible ? 'block' : 'none';
-                    if (isVisible) hasVisibleFiles = true;
-                });
-                
-                // Mostrar/esconder pasta baseado nos arquivos visiveis
-                folder.element.style.display = hasVisibleFiles ? 'block' : 'none';
-                
-                // Expandir pasta se houver busca ativa
-                if (query && hasVisibleFiles) {
-                    folder.fileList.style.display = 'block';
-                    folder.header.classList.add('active');
-                }
-            });
-            
-            // Se nao ha busca, mostrar tudo
-            if (!query) {
-                allFolders.forEach(folder => {
-                    folder.element.style.display = 'block';
-                    folder.files.forEach(file => {
-                        file.element.style.display = 'block';
+            if (fileExtension === 'csv') {
+                // Para CSVs, criar uma visualizacao HTML
+                fetch(filePath)
+                    .then(response => response.text())
+                    .then(data => {
+                        const rows = data.split('\n');
+                        let html = '<table border="1" style="border-collapse: collapse; width: 100%; font-size: 12px;">';
+                        
+                        rows.forEach((row, index) => {
+                            if (row.trim()) {
+                                const cells = row.split(',');
+                                html += '<tr>';
+                                cells.forEach(cell => {
+                                    const tag = index === 0 ? 'th' : 'td';
+                                    const style = index === 0 ? 'background: #f0f0f0; font-weight: bold; padding: 8px;' : 'padding: 5px;';
+                                    html += '<' + tag + ' style="' + style + '">' + cell.replace(/"/g, '') + '</' + tag + '>';
+                                });
+                                html += '</tr>';
+                            }
+                        });
+                        
+                        html += '</table>';
+                        const blob = new Blob([html], {type: 'text/html'});
+                        frame.src = URL.createObjectURL(blob);
+                    })
+                    .catch(error => {
+                        frame.src = filePath;
                     });
-                    folder.fileList.style.display = 'none';
-                    folder.header.classList.remove('active');
-                });
+            } else {
+                frame.src = filePath;
             }
-        }
-        
-        function updateStats() {
-            const totalFolders = allFolders.length;
-            const totalFiles = allFiles.length;
             
-            document.getElementById('totalFolders').textContent = totalFolders;
-            document.getElementById('totalFiles').textContent = totalFiles;
+            // Highlight do arquivo selecionado
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.style.backgroundColor = '';
+                item.style.fontWeight = '';
+            });
+            event.target.style.backgroundColor = '#d5e8d4';
+            event.target.style.fontWeight = 'bold';
         }
         
-        window.onload = initializePage;
+        function showWelcome() {
+            const frame = document.getElementById('contentFrame');
+            const welcomeHTML = `
+                <div style="text-align: center; padding: 50px; font-family: 'Segoe UI', Arial, sans-serif;">
+                    <h2 style="color: #2c3e50;">Relatorio de Auditoria Tecnica</h2>
+                    <p style="color: #7f8c8d; font-size: 16px;">Sistema: <strong>$Computer</strong></p>
+                    <p style="color: #7f8c8d;">Timestamp: <strong>$Timestamp</strong></p>
+                    <p style="color: #7f8c8d; margin-top: 30px;">Selecione uma pasta e arquivo na navegacao lateral para visualizar o conteudo.</p>
+                    <div style="margin-top: 40px; padding: 20px; background: #ecf0f1; border-radius: 8px; display: inline-block;">
+                        <p style="color: #2c3e50; margin: 0;"><strong>Dica:</strong> Clique nas pastas para expandir e nos arquivos para visualizar</p>
+                    </div>
+                </div>
+            `;
+            const blob = new Blob([welcomeHTML], {type: 'text/html'});
+            frame.src = URL.createObjectURL(blob);
+        }
+        
+        window.onload = function() {
+            showWelcome();
+        };
     </script>
 </head>
 <body>
     <div class="header">
-        <h1>Relatorio de Auditoria de Sistema - $Computer</h1>
-        <p>Gerado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss') | Timestamp: $Timestamp</p>
+        <h1>🔍 Relatorio de Auditoria Tecnica - Sistema SCADA</h1>
+        <p>Sistema: <strong>$Computer</strong> | Gerado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss') | Timestamp: <strong>$Timestamp</strong></p>
     </div>
     
     <div class="stats">
+"@
+
+    # Calcular estatisticas
+    $totalFolders = $Script:FOLDER_STRUCTURE.Count
+    $totalFiles = 0
+    $emptyFolders = 0
+    
+    foreach ($folderName in $Script:FOLDER_STRUCTURE.Keys) {
+        $folderPath = Join-Path $OutputPath $Computer $folderName
+        if (Test-Path $folderPath) {
+            $fileCount = (Get-ChildItem -Path $folderPath -File -ErrorAction SilentlyContinue).Count
+            $totalFiles += $fileCount
+            if ($fileCount -eq 0) {
+                $emptyFolders++ 
+            }
+        }
+        else {
+            $emptyFolders++
+        }
+    }
+
+    $htmlContent += @"
         <div class="stat-card">
-            <div class="stat-number" id="totalFolders">0</div>
-            <div class="stat-label">Categorias</div>
+            <div class="stat-number">$totalFolders</div>
+            <div class="stat-label">CATEGORIAS</div>
         </div>
         <div class="stat-card">
-            <div class="stat-number" id="totalFiles">0</div>
-            <div class="stat-label">Arquivos</div>
+            <div class="stat-number">$totalFiles</div>
+            <div class="stat-label">ARQUIVOS GERADOS</div>
         </div>
         <div class="stat-card">
-            <div class="stat-number">$(Get-Date -Format 'HH:mm')</div>
-            <div class="stat-label">Hora Geracao</div>
+            <div class="stat-number">$($totalFolders - $emptyFolders)</div>
+            <div class="stat-label">PASTAS COM DADOS</div>
         </div>
         <div class="stat-card">
-            <div class="stat-number">$(if ((Get-Date).DayOfWeek -eq 'Sunday') { 'DOM' } elseif ((Get-Date).DayOfWeek -eq 'Monday') { 'SEG' } elseif ((Get-Date).DayOfWeek -eq 'Tuesday') { 'TER' } elseif ((Get-Date).DayOfWeek -eq 'Wednesday') { 'QUA' } elseif ((Get-Date).DayOfWeek -eq 'Thursday') { 'QUI' } elseif ((Get-Date).DayOfWeek -eq 'Friday') { 'SEX' } else { 'SAB' })</div>
-            <div class="stat-label">Dia Semana</div>
+            <div class="stat-number">$emptyFolders</div>
+            <div class="stat-label">PASTAS VAZIAS</div>
         </div>
     </div>
     
     <div class="container">
         <div class="sidebar">
-            <h2>Estrutura de Arquivos</h2>
-            <input type="text" id="searchBox" class="search-box" placeholder="Buscar arquivos ou pastas..." onkeyup="searchFiles()">
+            <h3 style="margin-top: 0; color: #2c3e50;">📂 Estrutura de Arquivos</h3>
 "@
 
     foreach ($folderName in ($Script:FOLDER_STRUCTURE.Keys | Sort-Object)) {
         $folderPath = Join-Path $OutputPath $Computer $folderName
         $description = $Script:FOLDER_STRUCTURE[$folderName]
+        $fileCount = 0
+        
+        if (Test-Path $folderPath) {
+            $fileCount = (Get-ChildItem -Path $folderPath -File -ErrorAction SilentlyContinue).Count
+        }
+        
+        $statusIcon = if ($fileCount -gt 0) {
+            "✅" 
+        }
+        else {
+            "❌" 
+        }
         
         $htmlContent += @"
-            <div class="folder">
-                <div class="folder-header" onclick="toggleFolder(this)">$folderName</div>
-                <div class="file-list">
+        <div class="folder">
+            <div class="folder-name" onclick="toggleFolder(this)">
+                $statusIcon $folderName ($fileCount arquivos)
+                <div style="font-size: 11px; font-weight: normal; color: #666; margin-top: 3px;">$description</div>
+            </div>
+            <div class="file-list">
 "@
         
         if (Test-Path $folderPath) {
-            $files = Get-ChildItem -Path $folderPath -File | Sort-Object Name
+            $files = Get-ChildItem -Path $folderPath -File -ErrorAction SilentlyContinue | Sort-Object Name
             foreach ($file in $files) {
                 $relativePath = "./$Computer/$folderName/$($file.Name)"
+                $fileSize = if ($file.Length -gt 1MB) { 
+                    "$([math]::Round($file.Length/1MB, 1)) MB" 
+                }
+                elseif ($file.Length -gt 1KB) { 
+                    "$([math]::Round($file.Length/1KB, 1)) KB" 
+                }
+                else { 
+                    "$($file.Length) B" 
+                }
+                
                 $htmlContent += @"
-                    <div class="file-item" onclick="loadFile('$relativePath', '$($file.Name)')">$($file.Name)</div>
+                <div class="file-item" onclick="loadFile('$relativePath', '$($file.Name)')">
+                    📄 $($file.Name) <span style="color: #999; font-size: 10px;">($fileSize)</span>
+                </div>
 "@
             }
         }
         
-        $htmlContent += @"
+        if ($fileCount -eq 0) {
+            $htmlContent += @"
+                <div class="file-item" style="color: #999; font-style: italic;">
+                    Nenhum arquivo gerado
                 </div>
+"@
+        }
+        
+        $htmlContent += @"
             </div>
+        </div>
 "@
     }
 
@@ -2610,10 +2670,12 @@ function New-HTMLNavigationPage {
         </div>
         
         <div class="content">
-            <h2>Visualizador de Arquivos</h2>
-            <p>Arquivo atual: <span id="currentFile">Nenhum arquivo selecionado</span></p>
-            <iframe id="contentFrame" class="content-frame" src="about:blank"></iframe>
+            <iframe id="contentFrame" class="content-frame"></iframe>
         </div>
+    </div>
+    
+    <div style="text-align: center; margin-top: 20px; color: #7f8c8d; font-size: 12px;">
+        <p>Baseline NMR5 v10.2 - Sistema de Auditoria Tecnica SCADA | Gerado automaticamente</p>
     </div>
 </body>
 </html>
@@ -2626,7 +2688,7 @@ function New-HTMLNavigationPage {
     return $htmlPath
 }
 
-# Funcao para gerar relatorio final consolidado
+# Funcao para gerar relatorio final consolidado CORRIGIDO
 function New-ConsolidatedReportComplete {
     param(
         [string]$Computer,
@@ -2644,7 +2706,8 @@ function New-ConsolidatedReportComplete {
         [hashtable]$DiskResults,
         [hashtable]$NetworkResults,
         [hashtable]$JavaResults,
-        [array]$EventAnalysis
+        [array]$EventAnalysis,
+        [hashtable]$SecurityResults
     )
     
     Write-Host "Gerando relatorio consolidado completo..." -ForegroundColor Cyan
@@ -2652,6 +2715,7 @@ function New-ConsolidatedReportComplete {
     try {
         $reportPath = Join-Path $OutputPath $Computer "14_Relatorio"
         
+        # Calcular metricas
         $totalSoftware = if ($SoftwareList) {
             $SoftwareList.Count 
         }
@@ -2772,21 +2836,11 @@ $(if ($SystemInfo.OSInfo -and $SystemInfo.OSInfo.LastBootUpTime) { "Ultimo Boot:
 • Processos Java Suspeitos: $suspiciousJava
 • Atividades de Rede Incomuns: $suspiciousNetwork
 
- Analise de Hardware:
+ Informacoes de Hardware:
 ================================================================================
 $(if ($HardwareInfo.CPU) { "CPU: $($HardwareInfo.CPU.Name) ($($HardwareInfo.CPU.NumberOfCores) cores)" } else { "CPU: Nao disponivel" })
-$(if ($HardwareInfo.Memory) { "Memoria: $(($HardwareInfo.Memory | Measure-Object Capacity -Sum).Sum / 1GB) GB total" } else { "Memoria: Nao disponivel" })
-$(if ($HardwareInfo.ComputerSystem) { "Fabricante: $($HardwareInfo.ComputerSystem.Manufacturer) $($HardwareInfo.ComputerSystem.Model)" } else { "Sistema: Nao disponivel" })
-$(if ($BIOSInfo.BIOS) { "BIOS: $($BIOSInfo.BIOS.Manufacturer) v$($BIOSInfo.BIOS.Version)" } else { "BIOS: Nao disponivel" })
-
- Metodos de Coleta Utilizados:
-================================================================================
-$(if ($HardwareInfo.Methods) { "Hardware: CPU($($HardwareInfo.Methods.CPU)), RAM($($HardwareInfo.Methods.Memory)), Sistema($($HardwareInfo.Methods.ComputerSystem))" } else { "Hardware: Metodos nao especificados" })
-$(if ($BIOSInfo.Methods) { "BIOS: $($BIOSInfo.Methods.BIOS)" } else { "BIOS: Metodo nao especificado" })
-$(if ($ServicesInfo.Method) { "Servicos: $($ServicesInfo.Method)" } else { "Servicos: Metodo nao especificado" })
-$(if ($ProcessInfo.Method) { "Processos: $($ProcessInfo.Method)" } else { "Processos: Metodo nao especificado" })
-$(if ($DriversInfo.Method) { "Drivers: $($DriversInfo.Method)" } else { "Drivers: Metodo nao especificado" })
-$(if ($UpdatesInfo.Method) { "Atualizacoes: $($UpdatesInfo.Method)" } else { "Atualizacoes: Metodo nao especificado" })
+$(if ($HardwareInfo.Memory) { "Memoria RAM: $([math]::Round($HardwareInfo.Memory.Capacity/1GB, 2)) GB" } else { "Memoria RAM: Nao disponivel" })
+$(if ($BIOSInfo.BIOS) { "BIOS: $($BIOSInfo.BIOS.Manufacturer) $($BIOSInfo.BIOS.Version)" } else { "BIOS: Nao disponivel" })
 
  Analise de Armazenamento:
 ================================================================================
@@ -2940,6 +2994,15 @@ Metodo: $($disk.Method)
 • Diretorios Analisados: $($Script:FOLDER_STRUCTURE.Count)
 • Total de Arquivos Gerados: $(if (Test-Path (Join-Path $OutputPath $Computer)) { (Get-ChildItem -Path (Join-Path $OutputPath $Computer) -Recurse -File).Count } else { "Nao disponivel" })
 
+ Metodos de Coleta por Categoria:
+================================================================================
+Hardware: $(if ($HardwareInfo.Methods) { "CPU($($HardwareInfo.Methods.CPU)), RAM($($HardwareInfo.Methods.Memory)), MB($($HardwareInfo.Methods.ComputerSystem))" } else { "Nao coletado" })
+BIOS: $(if ($BIOSInfo.Methods) { "BIOS($($BIOSInfo.Methods.BIOS)), BaseBoard($($BIOSInfo.Methods.BaseBoard))" } else { "Nao coletado" })
+Servicos: $(if ($ServicesInfo.Method) { $ServicesInfo.Method } else { "Nao coletado" })
+Processos: $(if ($ProcessInfo.Method) { $ProcessInfo.Method } else { "Nao coletado" })
+Drivers: $(if ($DriversInfo.Method) { $DriversInfo.Method } else { "Nao coletado" })
+Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao coletado" })
+
  Arquivos de Saida Gerados:
 ================================================================================
 "@
@@ -3026,7 +3089,7 @@ Metodo: $($disk.Method)
     }
 }
 
-# FUNCAO PRINCIPAL CORRIGIDA: Execucao da auditoria
+# Funcao principal CORRIGIDA para execucao da auditoria
 function Start-SystemAudit {
     param(
         [string]$Computer = "localhost",
@@ -3038,7 +3101,7 @@ function Start-SystemAudit {
     $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
     
     Write-Host "################################################################################" -ForegroundColor Cyan
-    Write-Host "                    BASELINE NMR5 10.2 - PIC.EE.0246 - CORRIGIDA" -ForegroundColor Cyan
+    Write-Host "                    BASELINE NMR5 10.2 - PIC.EE.0246 CORRIGIDO" -ForegroundColor Cyan
     Write-Host "################################################################################" -ForegroundColor Cyan
     Write-Host "$Script:SCRIPT_HEADER" -ForegroundColor White
     Write-Host "Compatibilidade: $Script:SCRIPT_COMPATIBILITY" -ForegroundColor Gray
@@ -3096,11 +3159,11 @@ function Start-SystemAudit {
     Write-Host "`n[1/11] Coletando informacoes completas do sistema..." -ForegroundColor Yellow
     $systemInfo = Get-SystemInformationComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 2. Hardware (NOVA FUNCAO)
+    # 2. Hardware 
     Write-Host "`n[2/11] Coletando informacoes de hardware..." -ForegroundColor Yellow
     $hardwareInfo = Get-HardwareInformationComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 3. BIOS (NOVA FUNCAO)
+    # 3. BIOS
     Write-Host "`n[3/11] Coletando informacoes de BIOS..." -ForegroundColor Yellow
     $biosInfo = Get-BIOSInformationComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
@@ -3114,20 +3177,20 @@ function Start-SystemAudit {
         Write-Host "  Software coletado: $($softwareList.Count) programas" -ForegroundColor Green
     }
     
-    # 5. Atualizacoes (NOVA FUNCAO)
-    Write-Host "`n[5/11] Coletando atualizacoes do sistema..." -ForegroundColor Yellow
+    # 5. Atualizacoes
+    Write-Host "`n[5/11] Coletando atualizacoes e patches..." -ForegroundColor Yellow
     $updatesInfo = Get-UpdatesAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 6. Servicos (NOVA FUNCAO)
+    # 6. Servicos
     Write-Host "`n[6/11] Analisando servicos do sistema..." -ForegroundColor Yellow
     $servicesInfo = Get-ServicesAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 7. Processos (NOVA FUNCAO)
+    # 7. Processos
     Write-Host "`n[7/11] Analisando processos em execucao..." -ForegroundColor Yellow
     $processInfo = Get-ProcessAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 8. Drivers (NOVA FUNCAO)  
-    Write-Host "`n[8/11] Coletando drivers do sistema..." -ForegroundColor Yellow
+    # 8. Drivers
+    Write-Host "`n[8/11] Coletando informacoes de drivers..." -ForegroundColor Yellow
     $driversInfo = Get-DriversAnalysisComplete -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
     # 9. Analise de disco
@@ -3142,32 +3205,26 @@ function Start-SystemAudit {
     Write-Host "`n[11/11] Verificando processos Java suspeitos..." -ForegroundColor Yellow
     $javaResults = Get-JavaProcessAnalysis -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 12. Eventos do sistema
-    Write-Host "`n[EXTRA] Coletando logs de eventos..." -ForegroundColor Yellow
+    # Eventos do sistema
+    Write-Host "`nColetando logs de eventos..." -ForegroundColor Yellow
     $eventAnalysis = Get-EventLogAnalysis -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
     
-    # 13. Timeline de eventos
-    Write-Host "`n[EXTRA] Gerando timeline de eventos..." -ForegroundColor Yellow
+    # Timeline de eventos
+    Write-Host "`nGerando timeline de eventos..." -ForegroundColor Yellow
     New-EventTimelineReport -EventAnalysis $eventAnalysis -OutputPath $OutputBasePath -Computer $Computer -Timestamp $timestamp
     
-    # 14. Configuracoes de seguranca
-    Write-Host "`n[EXTRA] Analisando configuracoes de seguranca..." -ForegroundColor Yellow
+    # Configuracoes de seguranca
+    Write-Host "`nAnalisando configuracoes de seguranca..." -ForegroundColor Yellow
     $securityResults = Get-SecurityConfigurationAnalysis -Computer $Computer -OutputPath $OutputBasePath -Timestamp $timestamp
-    Write-Host "  Configuracoes de seguranca coletadas: $(if ($securityResults) { 'OK' } else { 'Falha' })" -ForegroundColor $(if ($securityResults) {
-            'Green' 
-        }
-        else {
-            'Red' 
-        })
     
-    # Gerar relatorio final CORRIGIDO
+    # Gerar relatorio final
     Write-Host "`n################################################################################" -ForegroundColor Magenta
     Write-Host "                           GERANDO RELATORIO FINAL" -ForegroundColor Magenta
     Write-Host "################################################################################" -ForegroundColor Magenta
     
-    $finalReport = New-ConsolidatedReportComplete -Computer $Computer -OutputPath $OutputBasePath -Domain $Domain -Timestamp $timestamp -SystemInfo $systemInfo -SoftwareList $softwareList -HardwareInfo $hardwareInfo -BIOSInfo $biosInfo -ServicesInfo $servicesInfo -ProcessInfo $processInfo -DriversInfo $driversInfo -UpdatesInfo $updatesInfo -DiskResults $diskResults -NetworkResults $networkResults -JavaResults $javaResults -EventAnalysis $eventAnalysis
+    $finalReport = New-ConsolidatedReportComplete -Computer $Computer -OutputPath $OutputBasePath -Domain $Domain -Timestamp $timestamp -SystemInfo $systemInfo -SoftwareList $softwareList -HardwareInfo $hardwareInfo -BIOSInfo $biosInfo -ServicesInfo $servicesInfo -ProcessInfo $processInfo -DriversInfo $driversInfo -UpdatesInfo $updatesInfo -DiskResults $diskResults -NetworkResults $networkResults -JavaResults $javaResults -EventAnalysis $eventAnalysis -SecurityResults $securityResults
     
-    # Criar pagina HTML de navegacao CORRIGIDA
+    # Criar pagina HTML de navegacao
     Write-Host "`nCriando pagina HTML navegavel..." -ForegroundColor Yellow
     $htmlPage = New-HTMLNavigationPage -OutputPath $OutputBasePath -Computer $Computer -Timestamp $timestamp
     
@@ -3188,15 +3245,6 @@ function Start-SystemAudit {
             'Yellow' 
         })
     Write-Host "Versao OS: $osVersion" -ForegroundColor Gray
-    
-    # Informacoes detalhadas de coleta
-    Write-Host "`nDetalhes da Coleta:" -ForegroundColor Cyan
-    Write-Host "Hardware: CPU($($hardwareInfo.Methods.CPU)), RAM($($hardwareInfo.Methods.Memory)), Sistema($($hardwareInfo.Methods.ComputerSystem))" -ForegroundColor Gray
-    Write-Host "BIOS: $($biosInfo.Methods.BIOS)" -ForegroundColor Gray  
-    Write-Host "Servicos: $($servicesInfo.Method) - $($servicesInfo.Services.Count) servicos" -ForegroundColor Gray
-    Write-Host "Processos: $($processInfo.Method) - $($processInfo.Processes.Count) processos" -ForegroundColor Gray
-    Write-Host "Drivers: $($driversInfo.Method) - $($driversInfo.SystemDrivers.Count) drivers" -ForegroundColor Gray
-    Write-Host "Atualizacoes: $($updatesInfo.Method) - $($updatesInfo.HotFixes.Count) atualizacoes" -ForegroundColor Gray
     
     if ($finalReport) {
         Write-Host "Status do sistema: $($finalReport.Status)" -ForegroundColor $(
