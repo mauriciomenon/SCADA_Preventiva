@@ -1,0 +1,35 @@
+# PowerShell
+*.ps1xml
+*.psd1~
+*.tmp
+*.log
+*.csv
+*.zip
+*.bak
+*~
+
+# Audit Results
+Audit_Results_*/
+*audit_results*
+*.audit
+
+# Temporary files
+temp/
+tmp/
+backup/
+*_backup*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
