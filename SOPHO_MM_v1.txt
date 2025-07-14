@@ -1,0 +1,48 @@
+#Mauricio Menon 01/09/2021 versao inicial
+#Pre comissionamento SOPHO
+#padrao: txt resumido csv completo
+
+# powershell.exe -executionpolicy unrestricted
+
+#lista rapida hotfix, completa mais abaixo
+get-hotfix | Out-File SOPHO_hotfix.txt
+
+#Comando dados OS 
+wmic /output:SOPHO_OS.txt  os get version,caption,countrycode,csname,description,installdate,serialnumber,servicepackmajorversion,windowsdirectory
+wmic /output:SOPHO_OS.csv  os get  /format:csv
+
+#Comando Lista completa Software 
+wmic /output:SOPHO_software.txt product get description,installdate,name,vendor
+wmic /output:SOPHO_software.csv product get  /format:csv
+
+#Comando Lista completa Servicepack
+wmic /output:SOPHO_kb.txt qfe get description,fixcomments,hotfixid,installedby,installedon,servicepackineffect
+wmic /output:SOPHO_kb.csv qfe get /format:csv
+
+#Comando Lista completa Services 
+wmic  /output:SOPHO_Services.txt service get name,caption,servicetype,startmode,pathname
+wmic  /output:SOPHO_Services.csv service get name,caption,servicetype,startmode,pathname /format:csv
+
+#Comando Lista dados BIOS
+wmic  /output:SOPHO_BIOS.txt bios get Manufacturer,Name,Version,Status,BIOSVERSION,Description,EmbeddedControllerMajorVersion,EmbeddedControllerMinorVersion,InstallDate,PrimaryBios,releasedate,serialnumber,smbiosbiosversion,SMBIOSMajorVersion,SMBIOSMinorVersion,SMBIOSPresent,SystemBiosMajorVersion,SystemBiosMinorVersion
+wmic  /output:SOPHO_BIOS.csv bios get /format:csv
+
+#Comando Lista SysDrivers 
+#obs:pouco tempo para refinar, obtendo info completa
+wmic /output:SOPHO_drivers.txt sysdriver get
+wmic /output:SOPHO_drivers.csv sysdriver get /format:csv
+
+#####################
+#COMPLEMENTAR
+#obs: obtendo info completa
+wmic /output:SOPHO_computersystem.txt computersystem get AdminPasswordStatus,AutomaticManagedPagefile,AutomaticResetBootOption,AutomaticResetCapability,BootOptionOnLimit,BootOptionOnWatchDog,BootROMSupported,BootStatus,BootupState,Caption,ChassisBootupState,ChassisSKUNumber,CreationClassName,CurrentTimeZone,DaylightInEffect,Description,DNSHostName,Domain,DomainRole,EnableDaylightSavingsTime,FrontPanelResetStatus,HypervisorPresent,InfraredSupported,InitialLoadInfo,InstallDate,KeyboardPasswordStatus,LastLoadInfo,Manufacturer,Model,Name,NameFormat,NetworkServerModeEnabled,NumberOfLogicalProcessors,NumberOfProcessors,OEMLogoBitmap,OEMStringArray,PartOfDomain,PauseAfterReset,PCSystemType,PCSystemTypeEx,PowerManagementCapabilities,PowerManagementSupported,PowerOnPasswordStatus,PowerState,PowerSupplyState,PrimaryOwnerContact,PrimaryOwnerName,ResetCapability,ResetCount,ResetLimit,Roles,Status,SupportContactDescription,SystemFamily,SystemSKUNumber,SystemStartupDelay,SystemStartupOptions,SystemStartupSetting,SystemType,ThermalState,TotalPhysicalMemory,UserName,WakeUpType,Workgroup
+wmic /output:SOPHO_computersystem.csv computersystem get AdminPasswordStatus,AutomaticManagedPagefile,AutomaticResetBootOption,AutomaticResetCapability,BootOptionOnLimit,BootOptionOnWatchDog,BootROMSupported,BootStatus,BootupState,Caption,ChassisBootupState,ChassisSKUNumber,CreationClassName,CurrentTimeZone,DaylightInEffect,Description,DNSHostName,Domain,DomainRole,EnableDaylightSavingsTime,FrontPanelResetStatus,HypervisorPresent,InfraredSupported,InitialLoadInfo,InstallDate,KeyboardPasswordStatus,LastLoadInfo,Manufacturer,Model,Name,NameFormat,NetworkServerModeEnabled,NumberOfLogicalProcessors,NumberOfProcessors,OEMLogoBitmap,OEMStringArray,PartOfDomain,PauseAfterReset,PCSystemType,PCSystemTypeEx,PowerManagementCapabilities,PowerManagementSupported,PowerOnPasswordStatus,PowerState,PowerSupplyState,PrimaryOwnerContact,PrimaryOwnerName,ResetCapability,ResetCount,ResetLimit,Roles,Status,SupportContactDescription,SystemFamily,SystemSKUNumber,SystemStartupDelay,SystemStartupOptions,SystemStartupSetting,SystemType,ThermalState,TotalPhysicalMemory,UserName,WakeUpType,Workgroup /format:csv
+
+wmic /output:SOPHO_cpu.txt cpu get 
+wmic /output:SOPHO_cpu.csv cpu get /format:csv
+
+wmic /output:SOPHO_logicaldisk.txt logicaldisk get
+wmic /output:SOPHO_logicaldisk.csv logicaldisk get /format:csv
+
+wmic /output:SOPHO_memorychip.txt memorychip get
+wmic /output:SOPHO_memorychip.csv memorychip get /format:csv
