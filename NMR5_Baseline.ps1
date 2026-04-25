@@ -28,6 +28,7 @@ Versão atual 27/06/2025 - CORRIGIDA
 $Script:SCRIPT_COMPATIBILITY = "PowerShell 5.1+ / PowerShell 7+ / Windows Server 2012 R2+ / Windows 10+"
 $Script:SCRIPT_METHODS = "CIM + WMI + WMIC + Registry + Comandos Nativos + TAF + Comissionamento SOPHO/STH"
 $Script:SCRIPT_SCOPE = "Sistema + Performance + Seguranca + Inventario"
+$Script:NON_BLOCKING_NOTICES = @()
 
 # Configuracoes
 $ErrorActionPreference = "Continue"
@@ -364,8 +365,9 @@ function Get-HardwareInformationComplete {
     
     Write-Host "  • Coletando informacoes completas de hardware..." -ForegroundColor White
     
-    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
-    $hwPath = Join-Path $OutputPath $Computer "01_Hw"
+    $hardwareBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $complementarPath = Join-Path -Path $hardwareBasePath -ChildPath "13_Relatorios_Complementares"
+    $hwPath = Join-Path -Path $hardwareBasePath -ChildPath "01_Hw"
     
     # Definir comandos para cada metodo
     $cimCPU = { Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop }
@@ -432,8 +434,9 @@ function Get-BIOSInformationComplete {
     
     Write-Host "  • Coletando informacoes completas de BIOS..." -ForegroundColor White
     
-    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
-    $biosPath = Join-Path $OutputPath $Computer "02_Hw_BIOS"
+    $biosBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $complementarPath = Join-Path -Path $biosBasePath -ChildPath "13_Relatorios_Complementares"
+    $biosPath = Join-Path -Path $biosBasePath -ChildPath "02_Hw_BIOS"
     
     # BIOS
     $cimBIOS = { Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop }
@@ -484,8 +487,9 @@ function Get-ServicesAnalysisComplete {
     
     Write-Host "  • Coletando informacoes completas de servicos..." -ForegroundColor White
     
-    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
-    $servicesPath = Join-Path $OutputPath $Computer "05_Servicos"
+    $servicesBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $complementarPath = Join-Path -Path $servicesBasePath -ChildPath "13_Relatorios_Complementares"
+    $servicesPath = Join-Path -Path $servicesBasePath -ChildPath "05_Servicos"
     
     # Services
     $cimSvc = { Get-CimInstance -ClassName Win32_Service -ErrorAction Stop }
@@ -565,8 +569,9 @@ function Get-ProcessAnalysisComplete {
     
     Write-Host "  • Coletando informacoes completas de processos..." -ForegroundColor White
     
-    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
-    $processPath = Join-Path $OutputPath $Computer "06_Processos"
+    $processBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $complementarPath = Join-Path -Path $processBasePath -ChildPath "13_Relatorios_Complementares"
+    $processPath = Join-Path -Path $processBasePath -ChildPath "06_Processos"
     
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
     
@@ -639,8 +644,9 @@ function Get-DriversAnalysisComplete {
     
     Write-Host "  • Coletando informacoes completas de drivers..." -ForegroundColor White
     
-    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
-    $driversPath = Join-Path $OutputPath $Computer "07_Drivers"
+    $driversBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $complementarPath = Join-Path -Path $driversBasePath -ChildPath "13_Relatorios_Complementares"
+    $driversPath = Join-Path -Path $driversBasePath -ChildPath "07_Drivers"
     
     # System Drivers
     $cimSysDriver = { Get-CimInstance -ClassName Win32_SystemDriver -ErrorAction Stop }
@@ -719,8 +725,9 @@ function Get-UpdatesAnalysisComplete {
     
     Write-Host "  • Coletando informacoes completas de atualizacoes..." -ForegroundColor White
     
-    $complementarPath = Join-Path $OutputPath $Computer "13_Relatorios_Complementares"
-    $updatesPath = Join-Path $OutputPath $Computer "04_Atualizacoes"
+    $updatesBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $complementarPath = Join-Path -Path $updatesBasePath -ChildPath "13_Relatorios_Complementares"
+    $updatesPath = Join-Path -Path $updatesBasePath -ChildPath "04_Atualizacoes"
     
     # HotFixes/Updates
     $cimHotfix = { Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop }
@@ -745,7 +752,9 @@ function Get-UpdatesAnalysisComplete {
                         $recentUpdates += $update
                     }
                 }
-                catch { }
+                catch {
+                    Write-Verbose "Data de instalacao invalida para HotFix '$($update.HotFixID)': '$($update.InstalledOn)'."
+                }
             }
         }
         
@@ -815,6 +824,7 @@ function Get-RemoteProgram {
         foreach ($Computer in $ComputerName) {
             $Results = @()
             $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
+            $softwareNotices = @()
             
             if ($isLocal) {
                 Write-Verbose "Executando analise de software LOCAL"
@@ -844,7 +854,11 @@ function Get-RemoteProgram {
                     Write-Verbose "Registry local: $($Results.Count) programas encontrados"
                 }
                 catch {
-                    Write-Warning "Falha no Registry local: $($_.Exception.Message)"
+                    $softwareNotices += [PSCustomObject]@{
+                        Target  = "Registry Local"
+                        Message = $_.Exception.Message
+                    }
+                    Write-Verbose "Falha no Registry local: $($_.Exception.Message)"
                 }
                 
                 if ($Results.Count -eq 0) {
@@ -878,7 +892,11 @@ function Get-RemoteProgram {
                         Write-Verbose "WMIC local: $(if ($wmicResults) { $wmicResults.Count } else { 0 }) programas encontrados"
                     }
                     catch {
-                        Write-Warning "WMIC local falhou: $($_.Exception.Message)"
+                        $softwareNotices += [PSCustomObject]@{
+                            Target  = "WMIC Local"
+                            Message = $_.Exception.Message
+                        }
+                        Write-Verbose "WMIC local falhou: $($_.Exception.Message)"
                     }
                 }
             }
@@ -919,13 +937,23 @@ function Get-RemoteProgram {
                                             }
                                         }
                                         finally {
-                                            if ($SubKey) { try { $SubKey.Close() } catch { } }
+                                            if ($SubKey) {
+                                                try { $SubKey.Close() }
+                                                catch {
+                                                    Write-Verbose "Falha ao fechar subchave de registry remoto em '$Computer': $($_.Exception.Message)"
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                             finally {
-                                if ($CurrentRegKey) { try { $CurrentRegKey.Close() } catch { } }
+                                if ($CurrentRegKey) {
+                                    try { $CurrentRegKey.Close() }
+                                    catch {
+                                        Write-Verbose "Falha ao fechar chave de registry remoto em '$Computer': $($_.Exception.Message)"
+                                    }
+                                }
                             }
                         }
                         $RegBase.Close()
@@ -934,7 +962,11 @@ function Get-RemoteProgram {
                     Write-Verbose "Registry remoto: $($Results.Count) programas encontrados"
                 }
                 catch {
-                    Write-Warning "Registry remoto falhou: $($_.Exception.Message)"
+                    $softwareNotices += [PSCustomObject]@{
+                        Target  = "Registry Remoto"
+                        Message = $_.Exception.Message
+                    }
+                    Write-Verbose "Registry remoto falhou: $($_.Exception.Message)"
                 }
                 
                 if ($Results.Count -eq 0) {
@@ -960,8 +992,23 @@ function Get-RemoteProgram {
                         Write-Verbose "WMIC remoto: $($Results.Count) programas encontrados"
                     }
                     catch {
-                        Write-Warning "WMIC remoto falhou: $($_.Exception.Message)"
+                        $softwareNotices += [PSCustomObject]@{
+                            Target  = "WMIC Remoto"
+                            Message = $_.Exception.Message
+                        }
+                        Write-Verbose "WMIC remoto falhou: $($_.Exception.Message)"
                     }
+                }
+            }
+
+            foreach ($notice in $softwareNotices) {
+                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    Severity  = "ATENCAO"
+                    Category  = "Software"
+                    Target    = $notice.Target
+                    Computer  = $Computer
+                    Message   = $notice.Message
                 }
             }
             
@@ -981,6 +1028,8 @@ function Get-SystemInformationComplete {
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
     $Results = @{}
     $AlternativeResults = @{}
+    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue))
+    $hasGetCounter = ($null -ne (Get-Command -Name "Get-Counter" -ErrorAction SilentlyContinue))
     
     Write-Host "Coletando informacoes completas do sistema $Computer..." -ForegroundColor Cyan
     
@@ -992,12 +1041,23 @@ function Get-SystemInformationComplete {
                 $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
             }
             catch {
-                try {
-                    $AlternativeResults["WMI_OSInfo"] = Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop
-                    $Results.OSInfo = $AlternativeResults["WMI_OSInfo"]
-                    $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                if ($hasGetWmiObject) {
+                    try {
+                        $AlternativeResults["WMI_OSInfo"] = Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop
+                        $Results.OSInfo = $AlternativeResults["WMI_OSInfo"]
+                        $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    }
+                    catch {
+                        $wmicOS = cmd /c "wmic os get Version,Caption,CountryCode,CSName,Description,InstallDate,SerialNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory,WindowsDirectory /format:csv 2>nul"
+                        if ($wmicOS) {
+                            $AlternativeResults["WMIC_OSInfo"] = $wmicOS | ConvertFrom-Csv | Where-Object { $_.Version }
+                            $Results.OSInfo = $AlternativeResults["WMIC_OSInfo"]
+                            $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
+                        }
+                    }
                 }
-                catch {
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC na coleta de SO."
                     $wmicOS = cmd /c "wmic os get Version,Caption,CountryCode,CSName,Description,InstallDate,SerialNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory,WindowsDirectory /format:csv 2>nul"
                     if ($wmicOS) {
                         $AlternativeResults["WMIC_OSInfo"] = $wmicOS | ConvertFrom-Csv | Where-Object { $_.Version }
@@ -1013,12 +1073,23 @@ function Get-SystemInformationComplete {
                 $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
             }
             catch {
-                try {
-                    $AlternativeResults["WMI_OSInfo"] = Get-WmiObject -Class Win32_OperatingSystem -ComputerName $Computer -ErrorAction Stop
-                    $Results.OSInfo = $AlternativeResults["WMI_OSInfo"]
-                    $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                if ($hasGetWmiObject) {
+                    try {
+                        $AlternativeResults["WMI_OSInfo"] = Get-WmiObject -Class Win32_OperatingSystem -ComputerName $Computer -ErrorAction Stop
+                        $Results.OSInfo = $AlternativeResults["WMI_OSInfo"]
+                        $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    }
+                    catch {
+                        $wmicOS = cmd /c "wmic /node:$Computer os get Version,Caption,CountryCode,CSName,Description,InstallDate,SerialNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory,WindowsDirectory /format:csv 2>nul"
+                        if ($wmicOS) {
+                            $AlternativeResults["WMIC_OSInfo"] = $wmicOS | ConvertFrom-Csv | Where-Object { $_.Version }
+                            $Results.OSInfo = $AlternativeResults["WMIC_OSInfo"]
+                            $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
+                        }
+                    }
                 }
-                catch {
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de SO."
                     $wmicOS = cmd /c "wmic /node:$Computer os get Version,Caption,CountryCode,CSName,Description,InstallDate,SerialNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory,WindowsDirectory /format:csv 2>nul"
                     if ($wmicOS) {
                         $AlternativeResults["WMIC_OSInfo"] = $wmicOS | ConvertFrom-Csv | Where-Object { $_.Version }
@@ -1038,19 +1109,40 @@ function Get-SystemInformationComplete {
     
     try {
         if ($isLocal) {
-            $cpuUsage = Get-Counter -Counter "\Processor(_Total)\% Processor Time" -SampleInterval 1 -MaxSamples 3 -ErrorAction SilentlyContinue
-            if ($cpuUsage) {
-                $Results.Performance.CPUUsage = ($cpuUsage.CounterSamples | Measure-Object -Property CookedValue -Average).Average
-                $Results.Performance.CPUHistory = $cpuUsage.CounterSamples | ForEach-Object { 
-                    [PSCustomObject]@{
-                        Timestamp = $_.Timestamp
-                        Value     = $_.CookedValue
+            if ($hasGetCounter) {
+                $cpuUsage = Get-Counter -Counter "\Processor(_Total)\% Processor Time" -SampleInterval 1 -MaxSamples 3 -ErrorAction Stop
+                if ($cpuUsage) {
+                    $Results.Performance.CPUUsage = ($cpuUsage.CounterSamples | Measure-Object -Property CookedValue -Average).Average
+                    $Results.Performance.CPUHistory = $cpuUsage.CounterSamples | ForEach-Object {
+                        [PSCustomObject]@{
+                            Timestamp = $_.Timestamp
+                            Value     = $_.CookedValue
+                        }
                     }
                 }
+            }
+            else {
+                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    Severity  = "ATENCAO"
+                    Category  = "Performance"
+                    Target    = "CPU Usage"
+                    Computer  = $Computer
+                    Message   = "Get-Counter indisponivel neste runtime; historico de CPU nao coletado."
+                }
+                Write-Verbose "Get-Counter indisponivel neste runtime; historico de CPU nao coletado."
             }
         }
     }
     catch {
+        $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+            Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            Severity  = "ATENCAO"
+            Category  = "Performance"
+            Target    = "CPU Usage"
+            Computer  = $Computer
+            Message   = $_.Exception.Message
+        }
         Write-Verbose "Falha ao obter CPU usage: $($_.Exception.Message)"
     }
     
@@ -1158,23 +1250,85 @@ function Get-NetworkAnalysisComplete {
     )
     
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
+    $remoteManagementReachable = $false
     $networkResults = @{}
-    
+    $networkNotices = @()
+    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue))
+    $hasGetNetAdapter = ($null -ne (Get-Command -Name "Get-NetAdapter" -ErrorAction SilentlyContinue))
+    $hasGetNetLbfoTeam = ($null -ne (Get-Command -Name "Get-NetLbfoTeam" -ErrorAction SilentlyContinue))
+    $hasGetNetLbfoTeamMember = ($null -ne (Get-Command -Name "Get-NetLbfoTeamMember" -ErrorAction SilentlyContinue))
+    $hasGetNetIPConfiguration = ($null -ne (Get-Command -Name "Get-NetIPConfiguration" -ErrorAction SilentlyContinue))
+    $hasGetNetTCPConnection = ($null -ne (Get-Command -Name "Get-NetTCPConnection" -ErrorAction SilentlyContinue))
+    $hasGetNetUDPEndpoint = ($null -ne (Get-Command -Name "Get-NetUDPEndpoint" -ErrorAction SilentlyContinue))
+
+    if (-not $isLocal) {
+        $probeClient = $null
+        try {
+            $probeClient = New-Object Net.Sockets.TcpClient
+            $remoteManagementReachable = $probeClient.ConnectAsync($Computer, 135).Wait(2000)
+        }
+        catch {
+            $remoteManagementReachable = $false
+        }
+        finally {
+            if ($probeClient) {
+                $probeClient.Close()
+                $probeClient.Dispose()
+            }
+        }
+    }
+
     Write-Host "Analisando configuracoes de rede completas..." -ForegroundColor Cyan
-    
-    Write-Host "  • Coletando informacoes de adaptadores..." -ForegroundColor White
+
+    Write-Host "  * Coletando informacoes de adaptadores..." -ForegroundColor White
     try {
         if ($isLocal) {
-            try {
-                $networkResults.Adapters = Get-NetAdapter -ErrorAction Stop
-                $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetAdapter"
-            }
-            catch {
+            if ($hasGetNetAdapter) {
                 try {
-                    $networkResults.Adapters = Get-WmiObject -Class Win32_NetworkAdapter -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
-                    $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    $networkResults.Adapters = Get-NetAdapter -ErrorAction Stop
+                    $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetAdapter"
                 }
                 catch {
+                    if ($hasGetWmiObject) {
+                        try {
+                            $networkResults.Adapters = Get-WmiObject -Class Win32_NetworkAdapter -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
+                            $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        }
+                        catch {
+                            $wmicNet = cmd /c "wmic path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
+                            if ($wmicNet) {
+                                $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
+                                $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
+                            }
+                        }
+                    }
+                    else {
+                        Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC na coleta de adaptadores."
+                        $wmicNet = cmd /c "wmic path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
+                        if ($wmicNet) {
+                            $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
+                            $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
+                        }
+                    }
+                }
+            }
+            else {
+                Write-Verbose "Get-NetAdapter indisponivel neste runtime; seguindo para fallback WMI/WMIC."
+                if ($hasGetWmiObject) {
+                    try {
+                        $networkResults.Adapters = Get-WmiObject -Class Win32_NetworkAdapter -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
+                        $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    }
+                    catch {
+                        $wmicNet = cmd /c "wmic path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
+                        if ($wmicNet) {
+                            $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
+                            $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
+                        }
+                    }
+                }
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC na coleta de adaptadores."
                     $wmicNet = cmd /c "wmic path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
                     if ($wmicNet) {
                         $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
@@ -1183,65 +1337,184 @@ function Get-NetworkAnalysisComplete {
                 }
             }
         }
+        else {
+            if ($remoteManagementReachable) {
+                if ($hasGetWmiObject) {
+                    try {
+                        $networkResults.Adapters = Get-WmiObject -Class Win32_NetworkAdapter -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
+                        $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI-Remote"
+                    }
+                    catch {
+                        $wmicNet = cmd /c "wmic /node:$Computer path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
+                        if ($wmicNet) {
+                            $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
+                            $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC-Remote"
+                        }
+                    }
+                }
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de adaptadores."
+                    $wmicNet = cmd /c "wmic /node:$Computer path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
+                    if ($wmicNet) {
+                        $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
+                        $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC-Remote"
+                    }
+                }
+            }
+            else {
+                $networkNotices += [PSCustomObject]@{
+                    Target  = "Adaptadores"
+                    Message = "Host remoto sem resposta rapida para gerenciamento WMI."
+                }
+            }
+        }
     }
     catch {
-        Write-Warning "Erro ao obter adaptadores de rede: $($_.Exception.Message)"
+        $networkNotices += [PSCustomObject]@{
+            Target  = "Adaptadores"
+            Message = $_.Exception.Message
+        }
+        Write-Verbose "Erro ao obter adaptadores de rede: $($_.Exception.Message)"
     }
-    
-    Write-Host "  • Verificando teaming de interfaces..." -ForegroundColor White
+
+    Write-Host "  * Verificando teaming de interfaces..." -ForegroundColor White
     try {
         if ($isLocal) {
-            try {
-                $networkResults.Teams = Get-NetLbfoTeam -ErrorAction Stop
-                $networkResults.TeamMembers = Get-NetLbfoTeamMember -ErrorAction Stop
-                $networkResults.Teams | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetLbfoTeam"
-                $networkResults.TeamMembers | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetLbfoTeamMember"
+            if ($hasGetNetLbfoTeam -and $hasGetNetLbfoTeamMember) {
+                try {
+                    $networkResults.Teams = Get-NetLbfoTeam -ErrorAction Stop
+                    $networkResults.TeamMembers = Get-NetLbfoTeamMember -ErrorAction Stop
+                    $networkResults.Teams | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetLbfoTeam"
+                    $networkResults.TeamMembers | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetLbfoTeamMember"
+                }
+                catch {
+                    Write-Verbose "Teaming nao disponivel ou nao configurado"
+                    $networkResults.Teams = @()
+                    $networkResults.TeamMembers = @()
+                }
             }
-            catch {
+            else {
+                Write-Verbose "Cmdlets de teaming indisponiveis neste runtime."
                 Write-Verbose "Teaming nao disponivel ou nao configurado"
                 $networkResults.Teams = @()
                 $networkResults.TeamMembers = @()
             }
         }
+        else {
+            $networkNotices += [PSCustomObject]@{
+                Target  = "Teaming"
+                Message = "Coleta remota de teaming nao suportada neste fluxo."
+            }
+        }
     }
     catch {
-        Write-Warning "Erro ao verificar teaming: $($_.Exception.Message)"
+        $networkNotices += [PSCustomObject]@{
+            Target  = "Teaming"
+            Message = $_.Exception.Message
+        }
+        Write-Verbose "Erro ao verificar teaming: $($_.Exception.Message)"
     }
-    
-    Write-Host "  • Coletando configuracoes IP..." -ForegroundColor White
+
+    Write-Host "  * Coletando configuracoes IP..." -ForegroundColor White
     try {
         if ($isLocal) {
-            try {
-                $networkResults.IPConfig = Get-NetIPConfiguration -ErrorAction Stop
-                $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetIPConfiguration"
-            }
-            catch {
+            if ($hasGetNetIPConfiguration) {
                 try {
-                    $networkResults.IPConfig = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
-                    $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    $networkResults.IPConfig = Get-NetIPConfiguration -ErrorAction Stop
+                    $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetIPConfiguration"
                 }
                 catch {
+                    if ($hasGetWmiObject) {
+                        try {
+                            $networkResults.IPConfig = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
+                            $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        }
+                        catch {
+                            $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
+                            $networkResults.IPConfig = $ipconfigOutput
+                            $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
+                        }
+                    }
+                    else {
+                        Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback ipconfig na coleta de IP."
+                        $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
+                        $networkResults.IPConfig = $ipconfigOutput
+                        $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
+                    }
+                }
+            }
+            else {
+                Write-Verbose "Get-NetIPConfiguration indisponivel neste runtime; seguindo para fallback WMI/ipconfig."
+                if ($hasGetWmiObject) {
+                    try {
+                        $networkResults.IPConfig = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
+                        $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    }
+                    catch {
+                        $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
+                        $networkResults.IPConfig = $ipconfigOutput
+                        $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
+                    }
+                }
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback ipconfig na coleta de IP."
                     $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
                     $networkResults.IPConfig = $ipconfigOutput
                     $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
                 }
             }
         }
+        else {
+            if ($remoteManagementReachable) {
+                if ($hasGetWmiObject) {
+                    $networkResults.IPConfig = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
+                    $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI-Remote"
+                }
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de IP."
+                    $wmicIP = cmd /c "wmic /node:$Computer nicconfig where IPEnabled=true get Description,IPAddress,IPSubnet,DefaultIPGateway,DNSHostName,DNSDomain /format:csv 2>nul"
+                    if ($wmicIP) {
+                        $networkResults.IPConfig = $wmicIP | ConvertFrom-Csv | Where-Object { $_.Description }
+                        $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC-Remote"
+                    }
+                }
+            }
+            else {
+                $networkNotices += [PSCustomObject]@{
+                    Target  = "Configuracao IP"
+                    Message = "Host remoto sem resposta rapida para gerenciamento WMI."
+                }
+            }
+        }
     }
     catch {
-        Write-Warning "Erro ao obter configuracoes IP: $($_.Exception.Message)"
+        $networkNotices += [PSCustomObject]@{
+            Target  = "Configuracao IP"
+            Message = $_.Exception.Message
+        }
+        Write-Verbose "Erro ao obter configuracoes IP: $($_.Exception.Message)"
     }
-    
-    Write-Host "  • Analisando conexoes ativas..." -ForegroundColor White
+
+    Write-Host "  * Analisando conexoes ativas..." -ForegroundColor White
     try {
         if ($isLocal) {
-            try {
-                $networkResults.Connections = Get-NetTCPConnection -ErrorAction Stop
-                $networkResults.UDPEndpoints = Get-NetUDPEndpoint -ErrorAction Stop
-                $networkResults.Connections | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetTCPConnection"
-                $networkResults.UDPEndpoints | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetUDPEndpoint"
+            if ($hasGetNetTCPConnection -and $hasGetNetUDPEndpoint) {
+                try {
+                    $networkResults.Connections = Get-NetTCPConnection -ErrorAction Stop
+                    $networkResults.UDPEndpoints = Get-NetUDPEndpoint -ErrorAction Stop
+                    $networkResults.Connections | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetTCPConnection"
+                    $networkResults.UDPEndpoints | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetUDPEndpoint"
+                }
+                catch {
+                    $netstatOutput = cmd /c "netstat -ano 2>nul"
+                    if ($netstatOutput) {
+                        $networkResults.Connections = $netstatOutput | Where-Object { $_ -match "TCP|UDP" }
+                        $networkResults.Connections | Add-Member -NotePropertyName "Method" -NotePropertyValue "netstat"
+                    }
+                }
             }
-            catch {
+            else {
+                Write-Verbose "Cmdlets Get-NetTCPConnection/Get-NetUDPEndpoint indisponiveis neste runtime; seguindo para fallback netstat."
                 $netstatOutput = cmd /c "netstat -ano 2>nul"
                 if ($netstatOutput) {
                     $networkResults.Connections = $netstatOutput | Where-Object { $_ -match "TCP|UDP" }
@@ -1249,12 +1522,22 @@ function Get-NetworkAnalysisComplete {
                 }
             }
         }
+        else {
+            $networkNotices += [PSCustomObject]@{
+                Target  = "Conexoes"
+                Message = "Coleta remota de conexoes nao suportada neste fluxo."
+            }
+        }
     }
     catch {
-        Write-Warning "Erro ao obter conexoes: $($_.Exception.Message)"
+        $networkNotices += [PSCustomObject]@{
+            Target  = "Conexoes"
+            Message = $_.Exception.Message
+        }
+        Write-Verbose "Erro ao obter conexoes: $($_.Exception.Message)"
     }
-    
-    Write-Host "  • Identificando processos com atividade de rede..." -ForegroundColor White
+
+    Write-Host "  * Identificando processos com atividade de rede..." -ForegroundColor White
     try {
         if ($isLocal) {
             $netstatWithPID = cmd /c "netstat -anob 2>nul"
@@ -1263,41 +1546,167 @@ function Get-NetworkAnalysisComplete {
                 $networkResults.ProcessConnections | Add-Member -NotePropertyName "Method" -NotePropertyValue "netstat -anob"
             }
         }
-    }
-    catch {
-        Write-Warning "Erro ao obter processos de rede: $($_.Exception.Message)"
-    }
-    
-    Write-Host "  • Analisando atividade incomum..." -ForegroundColor White
-    $suspiciousActivity = @()
-    
-    if ($networkResults.IPConfig -and $networkResults.Connections) {
-        $localSubnets = @()
-        if ($networkResults.IPConfig.IPv4Address) {
-            foreach ($ip in $networkResults.IPConfig.IPv4Address) {
-                $subnet = ($ip.IPAddress -split '\.')[0..2] -join '.'
-                $localSubnets += $subnet
+        else {
+            $networkNotices += [PSCustomObject]@{
+                Target  = "Processos de Rede"
+                Message = "Correlacao remota de processos de rede nao suportada neste fluxo."
             }
         }
-        
-        if ($networkResults.Connections.RemoteAddress) {
-            foreach ($conn in $networkResults.Connections) {
-                $remoteIP = $conn.RemoteAddress
-                $remotePort = $conn.RemotePort
-                
-                $isExternal = $true
-                foreach ($subnet in $localSubnets) {
-                    if ($remoteIP -like "$subnet.*") {
-                        $isExternal = $false
-                        break
+    }
+    catch {
+        $networkNotices += [PSCustomObject]@{
+            Target  = "Processos de Rede"
+            Message = $_.Exception.Message
+        }
+        Write-Verbose "Erro ao obter processos de rede: $($_.Exception.Message)"
+    }
+
+    Write-Host "  * Analisando atividade incomum..." -ForegroundColor White
+    $networkResults.SuspiciousActivity = New-Object 'System.Collections.Generic.List[object]'
+    if ($networkResults.IPConfig -and $networkResults.Connections) {
+        $localSubnets = @()
+        $localSubnetLookup = @{}
+        $connectionsForAnalysis = New-Object 'System.Collections.Generic.List[object]'
+        if ($networkResults.IPConfig.IPv4Address) {
+            foreach ($ip in $networkResults.IPConfig.IPv4Address) {
+                $ipAddressValue = $null
+                $prefixLength = 24
+                if ($ip -is [string]) {
+                    $ipAddressValue = $ip
+                }
+                else {
+                    if ($null -ne $ip.PSObject.Properties['IPAddress']) {
+                        $ipAddressValue = $ip.IPAddress
+                    }
+                    if ($null -ne $ip.PSObject.Properties['PrefixLength']) {
+                        $prefixLength = [int]$ip.PrefixLength
                     }
                 }
-                
+
+                if ($ipAddressValue -and $ipAddressValue -match '^\d{1,3}(\.\d{1,3}){3}$') {
+                    $subnetParts = $ipAddressValue -split '\.'
+                    if ($prefixLength -le 16) {
+                        $subnet = $subnetParts[0..1] -join '.'
+                    }
+                    elseif ($prefixLength -le 24) {
+                        $subnet = $subnetParts[0..2] -join '.'
+                    }
+                    else {
+                        $subnet = $subnetParts -join '.'
+                    }
+                    $localSubnets += [PSCustomObject]@{
+                        PrefixLength = $prefixLength
+                        Value        = $subnet
+                    }
+                }
+            }
+        }
+        elseif ($networkResults.IPConfig -is [System.Array]) {
+            foreach ($ipLine in $networkResults.IPConfig) {
+                if ($ipLine -isnot [string] -and $null -ne $ipLine.PSObject.Properties['IPAddress']) {
+                    $prefixLength = 24
+                    if ($null -ne $ipLine.PSObject.Properties['IPSubnet'] -and $ipLine.IPSubnet) {
+                        $subnetMask = @($ipLine.IPSubnet | Where-Object { $_ -match '^\d{1,3}(\.\d{1,3}){3}$' } | Select-Object -First 1)
+                        if ($subnetMask.Count -gt 0) {
+                            $prefixLength = (($subnetMask[0] -split '\.') | ForEach-Object { [Convert]::ToString([int]$_, 2).PadLeft(8, '0') } | ForEach-Object { ($_ -split '1').Count - 1 } | Measure-Object -Sum).Sum
+                        }
+                    }
+                    foreach ($ipAddressValue in @($ipLine.IPAddress)) {
+                        if ($ipAddressValue -and $ipAddressValue -match '^\d{1,3}(\.\d{1,3}){3}$') {
+                            $subnetParts = $ipAddressValue -split '\.'
+                            if ($prefixLength -le 16) {
+                                $subnet = $subnetParts[0..1] -join '.'
+                            }
+                            elseif ($prefixLength -le 24) {
+                                $subnet = $subnetParts[0..2] -join '.'
+                            }
+                            else {
+                                $subnet = $subnetParts -join '.'
+                            }
+                            $localSubnets += [PSCustomObject]@{
+                                PrefixLength = $prefixLength
+                                Value        = $subnet
+                            }
+                        }
+                    }
+                }
+                else {
+                    $ipLineMatch = $null
+                    if ($ipLine -is [string]) {
+                        $ipLineMatch = [regex]::Match($ipLine, 'IPv4[^:]*:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)')
+                    }
+
+                    if ($ipLineMatch -and $ipLineMatch.Success) {
+                        $subnet = ($ipLineMatch.Groups[1].Value -split '\.')[0..2] -join '.'
+                        $localSubnets += [PSCustomObject]@{
+                            PrefixLength = 24
+                            Value        = $subnet
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach ($subnet in $localSubnets | Group-Object Value, PrefixLength | ForEach-Object { $_.Group[0] }) {
+            $localSubnetLookup["$($subnet.PrefixLength)|$($subnet.Value)"] = $true
+        }
+
+        if ($networkResults.Connections -and $networkResults.Connections[0].PSObject.Properties['RemoteAddress']) {
+            $connectionsForAnalysis = @($networkResults.Connections)
+        }
+        else {
+            foreach ($connLine in $networkResults.Connections) {
+                $connMatch = $null
+                if ($connLine -is [string]) {
+                    $connMatch = [regex]::Match($connLine, '^\s*(TCP|UDP)\s+(\S+):(\d+)\s+(\S+):(\d+)\s*(\S+)?')
+                }
+
+                if ($connMatch -and $connMatch.Success) {
+                    $connState = "UNKNOWN"
+                    if ($connMatch.Groups[6].Success) {
+                        $connState = $connMatch.Groups[6].Value
+                    }
+                    $connectionsForAnalysis.Add([PSCustomObject]@{
+                        LocalAddress  = $connMatch.Groups[2].Value
+                        LocalPort     = [int]$connMatch.Groups[3].Value
+                        RemoteAddress = $connMatch.Groups[4].Value
+                        RemotePort    = [int]$connMatch.Groups[5].Value
+                        State         = $connState
+                    }) | Out-Null
+                }
+            }
+        }
+
+        if ($connectionsForAnalysis) {
+            foreach ($conn in $connectionsForAnalysis) {
+                $remoteIP = $conn.RemoteAddress
+                $remotePort = $conn.RemotePort
+                $isExternal = $true
+                if ($remoteIP -match '^\d{1,3}(\.\d{1,3}){3}$') {
+                    $remoteParts = $remoteIP -split '\.'
+                    foreach ($subnet in $localSubnets) {
+                        if ($subnet.PrefixLength -le 16) {
+                            $remoteSubnet = $remoteParts[0..1] -join '.'
+                        }
+                        elseif ($subnet.PrefixLength -le 24) {
+                            $remoteSubnet = $remoteParts[0..2] -join '.'
+                        }
+                        else {
+                            $remoteSubnet = $remoteParts -join '.'
+                        }
+
+                        if ($localSubnetLookup.ContainsKey("$($subnet.PrefixLength)|$remoteSubnet")) {
+                            $isExternal = $false
+                            break
+                        }
+                    }
+                }
+
                 $standardPorts = @(80, 443, 21, 22, 23, 25, 53, 110, 143, 993, 995, 3389, 5985, 5986)
                 $isNonStandardPort = $remotePort -notin $standardPorts
-                
+
                 if ($isExternal -and $isNonStandardPort -and $remoteIP -ne "0.0.0.0" -and $remoteIP -ne "127.0.0.1") {
-                    $suspiciousActivity += [PSCustomObject]@{
+                    $networkResults.SuspiciousActivity.Add([PSCustomObject]@{
                         LocalAddress  = $conn.LocalAddress
                         LocalPort     = $conn.LocalPort
                         RemoteAddress = $remoteIP
@@ -1305,25 +1714,23 @@ function Get-NetworkAnalysisComplete {
                         State         = $conn.State
                         Reason        = "IP externo com porta nao padrao"
                         Timestamp     = Get-Date
-                    }
+                    }) | Out-Null
                 }
             }
         }
     }
-    
-    $networkResults.SuspiciousActivity = $suspiciousActivity
-    
-    $netPath = Join-Path $OutputPath $Computer "09_Rede"
-    
+
+    $netBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $netPath = Join-Path -Path $netBasePath -ChildPath "09_Rede"
     if ($networkResults.Adapters) {
         $networkResults.Adapters | Export-Csv -Path (Join-Path $netPath "${Timestamp}_Adaptadores_Rede.csv") -NoTypeInformation -Encoding UTF8
         $networkResults.Adapters | Format-Table -AutoSize | Out-File -FilePath (Join-Path $netPath "${Timestamp}_Adaptadores_Rede.txt") -Encoding UTF8
     }
-    
+
     if ($networkResults.Teams) {
         $networkResults.Teams | Export-Csv -Path (Join-Path $netPath "${Timestamp}_Teams_Rede.csv") -NoTypeInformation -Encoding UTF8
         $networkResults.TeamMembers | Export-Csv -Path (Join-Path $netPath "${Timestamp}_Team_Members.csv") -NoTypeInformation -Encoding UTF8
-        
+
         $teamReport = @"
 Configuracao de Teaming de Rede
 ===============================
@@ -1344,22 +1751,33 @@ Membros: $($members.Name -join ', ')
         }
         $teamReport | Out-File -FilePath (Join-Path $netPath "${Timestamp}_Teams_Rede.txt") -Encoding UTF8
     }
-    
+
+    foreach ($notice in $networkNotices) {
+        $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+            Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            Severity  = "ATENCAO"
+            Category  = "Rede"
+            Target    = $notice.Target
+            Computer  = $Computer
+            Message   = $notice.Message
+        }
+    }
+
     if ($networkResults.IPConfig) {
         $networkResults.IPConfig | Export-Csv -Path (Join-Path $netPath "${Timestamp}_Configuracao_IP.csv") -NoTypeInformation -Encoding UTF8
         $networkResults.IPConfig | Format-List | Out-File -FilePath (Join-Path $netPath "${Timestamp}_Configuracao_IP.txt") -Encoding UTF8
     }
-    
+
     if ($networkResults.Connections) {
         $networkResults.Connections | Export-Csv -Path (Join-Path $netPath "${Timestamp}_Conexoes_TCP.csv") -NoTypeInformation -Encoding UTF8
         $networkResults.Connections | Format-Table -AutoSize | Out-File -FilePath (Join-Path $netPath "${Timestamp}_Conexoes_TCP.txt") -Encoding UTF8
     }
-    
+
     if ($networkResults.SuspiciousActivity -and $networkResults.SuspiciousActivity.Count -gt 0) {
         $networkResults.SuspiciousActivity | Export-Csv -Path (Join-Path $netPath "${Timestamp}_Atividade_Incomum.csv") -NoTypeInformation -Encoding UTF8
         $networkResults.SuspiciousActivity | Format-Table -AutoSize | Out-File -FilePath (Join-Path $netPath "${Timestamp}_Atividade_Incomum.txt") -Encoding UTF8
     }
-    
+
     Write-Host "  Analise de rede concluida" -ForegroundColor Green
     return $networkResults
 }
@@ -1375,6 +1793,8 @@ function Get-DiskUsageAnalysisComplete {
     Write-Host "Analisando utilizacao de disco detalhada para $Computer..." -ForegroundColor Cyan
     
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
+    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue))
+    $hasSafeRemoteComputerName = ($Computer -match '^[a-zA-Z0-9.-]+$')
     $diskAnalysis = @()
     $folderAnalysis = @()
     $userAnalysis = @()
@@ -1386,8 +1806,18 @@ function Get-DiskUsageAnalysisComplete {
                 $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
             }
             catch {
-                $drives = Get-WmiObject -Class Win32_LogicalDisk -ErrorAction Stop | Where-Object { $_.DriveType -eq 3 }
-                $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                if ($hasGetWmiObject) {
+                    $drives = Get-WmiObject -Class Win32_LogicalDisk -ErrorAction Stop | Where-Object { $_.DriveType -eq 3 }
+                    $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                }
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC na coleta de disco."
+                    $wmicDrives = cmd /c "wmic logicaldisk where drivetype=3 get DeviceID,VolumeName,Size,FreeSpace /format:csv 2>nul"
+                    if ($wmicDrives) {
+                        $drives = $wmicDrives | ConvertFrom-Csv | Where-Object { $_.DeviceID }
+                        $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
+                    }
+                }
             }
         }
         else {
@@ -1396,8 +1826,23 @@ function Get-DiskUsageAnalysisComplete {
                 $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
             }
             catch {
-                $drives = Get-WmiObject -Class Win32_LogicalDisk -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.DriveType -eq 3 }
-                $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                if ($hasGetWmiObject) {
+                    $drives = Get-WmiObject -Class Win32_LogicalDisk -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.DriveType -eq 3 }
+                    $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                }
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de disco."
+                    if ($hasSafeRemoteComputerName) {
+                        $wmicDrives = cmd /c "wmic /node:$Computer logicaldisk where drivetype=3 get DeviceID,VolumeName,Size,FreeSpace /format:csv 2>nul"
+                        if ($wmicDrives) {
+                            $drives = $wmicDrives | ConvertFrom-Csv | Where-Object { $_.DeviceID }
+                            $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
+                        }
+                    }
+                    else {
+                        Write-Verbose "Nome de computador remoto invalido para fallback WMIC de disco: '$Computer'."
+                    }
+                }
             }
         }
         
@@ -1464,12 +1909,16 @@ function Get-DiskUsageAnalysisComplete {
                                                 $folder1FileCount += $level3Files.Count
                                             }
                                         }
-                                        catch { }
+                                        catch {
+                                            Write-Verbose "Falha ao analisar subpasta '$($folder3.FullName)' no drive '$($drive.DeviceID)': $($_.Exception.Message)"
+                                        }
                                     }
                                     
                                     $folder1Size += $folder2Size
                                 }
-                                catch { }
+                                catch {
+                                    Write-Verbose "Falha ao analisar pasta de segundo nivel '$($folder2.FullName)' sob '$($folder1.FullName)': $($_.Exception.Message)"
+                                }
                             }
                             
                             if ($folder1Size -gt 0) {
@@ -1495,10 +1944,14 @@ function Get-DiskUsageAnalysisComplete {
                                 }
                             }
                         }
-                        catch { }
+                        catch {
+                            Write-Verbose "Falha ao analisar pasta '$($folder1.FullName)' no drive '$($drive.DeviceID)': $($_.Exception.Message)"
+                        }
                     }
                 }
-                catch { }
+                catch {
+                    Write-Verbose "Falha ao enumerar pastas do drive '$($drive.DeviceID)': $($_.Exception.Message)"
+                }
                 
                 try {
                     $systemFolders = @("Windows", "Program Files", "Program Files (x86)", "ProgramData")
@@ -1530,11 +1983,14 @@ function Get-DiskUsageAnalysisComplete {
                         OtherPercent  = [math]::Round(($otherSize / $drive.Size) * 100, 1)
                     }
                 }
-                catch { }
+                catch {
+                    Write-Verbose "Falha ao consolidar uso do drive '$($drive.DeviceID)' em sistema, usuarios e outros: $($_.Exception.Message)"
+                }
             }
         }
         
-        $diskPath = Join-Path $OutputPath $Computer "10_Disco"
+        $diskBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+        $diskPath = Join-Path -Path $diskBasePath -ChildPath "10_Disco"
         
         $diskAnalysis | Export-Csv -Path (Join-Path $diskPath "${Timestamp}_Analise_Disco.csv") -NoTypeInformation -Encoding UTF8
         
@@ -1684,7 +2140,9 @@ function Get-JavaProcessAnalysis {
                                     $suspiciousIndicators += "Assinatura digital invalida ou ausente"
                                 }
                             }
-                            catch { }
+                            catch {
+                                Write-Verbose "Falha ao verificar assinatura digital de '$executablePath': $($_.Exception.Message)"
+                            }
                         }
                     }
                     
@@ -1699,7 +2157,9 @@ function Get-JavaProcessAnalysis {
                         }
                     }
                 }
-                catch { }
+                catch {
+                    Write-Verbose "Falha ao analisar processo Java '$($proc.ProcessName)' (PID $($proc.Id)): $($_.Exception.Message)"
+                }
             }
         }
     }
@@ -1707,7 +2167,8 @@ function Get-JavaProcessAnalysis {
         Write-Warning "Erro ao analisar processos Java: $($_.Exception.Message)"
     }
     
-    $procPath = Join-Path $OutputPath $Computer "06_Processos"
+    $procBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $procPath = Join-Path -Path $procBasePath -ChildPath "06_Processos"
     
     if ($javaProcesses.Count -gt 0) {
         $javaProcesses | Export-Csv -Path (Join-Path $procPath "${Timestamp}_Processos_Java.csv") -NoTypeInformation -Encoding UTF8
@@ -1758,6 +2219,7 @@ function Get-EventLogAnalysis {
     )
     
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
+    $hasGetWinEvent = ($null -ne (Get-Command -Name "Get-WinEvent" -ErrorAction SilentlyContinue))
     $eventAnalysis = @()
     
     Write-Host "Coletando logs de eventos criticos..." -ForegroundColor Cyan
@@ -1771,13 +2233,26 @@ function Get-EventLogAnalysis {
             try {
                 $events = @()
                 
-                if ($isLocal) {
-                    $events = Get-WinEvent -LogName $logName -MaxEvents 1000 -ErrorAction SilentlyContinue | 
-                        Where-Object { $_.LevelDisplayName -eq "Error" -or $_.LevelDisplayName -eq "Warning" -or $_.LevelDisplayName -eq "Critical" -or $_.Id -in $Script:EVENT_TRANSLATION.Keys }
+                if ($hasGetWinEvent) {
+                    if ($isLocal) {
+                        $events = Get-WinEvent -LogName $logName -MaxEvents 1000 -ErrorAction Stop |
+                            Where-Object { $_.LevelDisplayName -eq "Error" -or $_.LevelDisplayName -eq "Warning" -or $_.LevelDisplayName -eq "Critical" -or $_.Id -in $Script:EVENT_TRANSLATION.Keys }
+                    }
+                    else {
+                        $events = Get-WinEvent -ComputerName $Computer -LogName $logName -MaxEvents 1000 -ErrorAction Stop |
+                            Where-Object { $_.LevelDisplayName -eq "Error" -or $_.LevelDisplayName -eq "Warning" -or $_.LevelDisplayName -eq "Critical" -or $_.Id -in $Script:EVENT_TRANSLATION.Keys }
+                    }
                 }
                 else {
-                    $events = Get-WinEvent -ComputerName $Computer -LogName $logName -MaxEvents 1000 -ErrorAction SilentlyContinue | 
-                        Where-Object { $_.LevelDisplayName -eq "Error" -or $_.LevelDisplayName -eq "Warning" -or $_.LevelDisplayName -eq "Critical" -or $_.Id -in $Script:EVENT_TRANSLATION.Keys }
+                    $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                        Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                        Severity  = "ATENCAO"
+                        Category  = "Eventos"
+                        Target    = $logName
+                        Computer  = $Computer
+                        Message   = "Get-WinEvent indisponivel neste runtime; coleta de eventos pulada."
+                    }
+                    Write-Verbose "Get-WinEvent indisponivel neste runtime; coleta do log $logName pulada."
                 }
                 
                 foreach ($event in $events) {
@@ -1814,11 +2289,20 @@ function Get-EventLogAnalysis {
                 Write-Host "    - Coletados $(($events | Measure-Object).Count) eventos de $logName" -ForegroundColor Gray
             }
             catch {
-                Write-Warning "Erro ao coletar eventos do log $logName : $($_.Exception.Message)"
+                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    Severity  = "ATENCAO"
+                    Category  = "Eventos"
+                    Target    = $logName
+                    Computer  = $Computer
+                    Message   = $_.Exception.Message
+                }
+                Write-Verbose "Falha ao coletar eventos do log $logName : $($_.Exception.Message)"
             }
         }
         
-        $logPath = Join-Path $OutputPath $Computer "11_Eventos"
+        $logBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+        $logPath = Join-Path -Path $logBasePath -ChildPath "11_Eventos"
         
         $eventAnalysis | Sort-Object TimeCreated -Descending | Export-Csv -Path (Join-Path $logPath "${Timestamp}_Logs_Eventos_Completos.csv") -NoTypeInformation -Encoding UTF8
         $eventAnalysis | Sort-Object TimeCreated -Descending | Format-Table TimeCreated, LogName, Id, Severity, Source, TranslatedDescription -AutoSize | Out-File -FilePath (Join-Path $logPath "${Timestamp}_Logs_Eventos_Completos.txt") -Encoding UTF8 -Width 300
@@ -1927,7 +2411,8 @@ function New-EventTimelineReport {
         return
     }
     
-    $eventPath = Join-Path $OutputPath $Computer "11_Eventos"
+    $eventBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $eventPath = Join-Path -Path $eventBasePath -ChildPath "11_Eventos"
     
     $eventCategories = @{
         "System"      = $EventAnalysis | Where-Object { $_.LogName -eq "System" }
@@ -2012,25 +2497,66 @@ function Get-SecurityConfigurationAnalysis {
     
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
     $securityResults = @{}
+    $hasGetLocalUser = ($null -ne (Get-Command -Name "Get-LocalUser" -ErrorAction SilentlyContinue))
+    $hasGetLocalGroup = ($null -ne (Get-Command -Name "Get-LocalGroup" -ErrorAction SilentlyContinue))
+    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue))
+    $hasGetNetFirewallProfile = ($null -ne (Get-Command -Name "Get-NetFirewallProfile" -ErrorAction SilentlyContinue))
+    $hasGetNetFirewallRule = ($null -ne (Get-Command -Name "Get-NetFirewallRule" -ErrorAction SilentlyContinue))
+    $hasGetSmbShare = ($null -ne (Get-Command -Name "Get-SmbShare" -ErrorAction SilentlyContinue))
     
     Write-Host "  • Analisando configuracoes de seguranca..." -ForegroundColor White
     
     try {
         if ($isLocal) {
-            try {
-                $securityResults.LocalUsers = Get-LocalUser -ErrorAction Stop
-                $securityResults.LocalGroups = Get-LocalGroup -ErrorAction Stop
-                $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-LocalUser"
-                $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-LocalGroup"
-            }
-            catch {
+            if ($hasGetLocalUser -and $hasGetLocalGroup) {
                 try {
-                    $securityResults.LocalUsers = Get-WmiObject -Class Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop
-                    $securityResults.LocalGroups = Get-WmiObject -Class Win32_Group -Filter "LocalAccount=True" -ErrorAction Stop
-                    $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
-                    $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    $securityResults.LocalUsers = Get-LocalUser -ErrorAction Stop
+                    $securityResults.LocalGroups = Get-LocalGroup -ErrorAction Stop
+                    $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-LocalUser"
+                    $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-LocalGroup"
                 }
                 catch {
+                    if ($hasGetWmiObject) {
+                        try {
+                            $securityResults.LocalUsers = Get-WmiObject -Class Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop
+                            $securityResults.LocalGroups = Get-WmiObject -Class Win32_Group -Filter "LocalAccount=True" -ErrorAction Stop
+                            $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                            $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        }
+                        catch {
+                            $netUserOutput = cmd /c "net user 2>nul"
+                            $netGroupOutput = cmd /c "net localgroup 2>nul"
+                            $securityResults.LocalUsers = $netUserOutput
+                            $securityResults.LocalGroups = $netGroupOutput
+                        }
+                    }
+                    else {
+                        Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback net user/net localgroup."
+                        $netUserOutput = cmd /c "net user 2>nul"
+                        $netGroupOutput = cmd /c "net localgroup 2>nul"
+                        $securityResults.LocalUsers = $netUserOutput
+                        $securityResults.LocalGroups = $netGroupOutput
+                    }
+                }
+            }
+            else {
+                Write-Verbose "Cmdlets Get-LocalUser/Get-LocalGroup indisponiveis neste runtime; seguindo para fallback WMI/net."
+                if ($hasGetWmiObject) {
+                    try {
+                        $securityResults.LocalUsers = Get-WmiObject -Class Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop
+                        $securityResults.LocalGroups = Get-WmiObject -Class Win32_Group -Filter "LocalAccount=True" -ErrorAction Stop
+                        $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    }
+                    catch {
+                        $netUserOutput = cmd /c "net user 2>nul"
+                        $netGroupOutput = cmd /c "net localgroup 2>nul"
+                        $securityResults.LocalUsers = $netUserOutput
+                        $securityResults.LocalGroups = $netGroupOutput
+                    }
+                }
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback net user/net localgroup."
                     $netUserOutput = cmd /c "net user 2>nul"
                     $netGroupOutput = cmd /c "net localgroup 2>nul"
                     $securityResults.LocalUsers = $netUserOutput
@@ -2045,12 +2571,20 @@ function Get-SecurityConfigurationAnalysis {
     
     try {
         if ($isLocal) {
-            try {
-                $securityResults.FirewallProfiles = Get-NetFirewallProfile -ErrorAction Stop
-                $securityResults.FirewallRules = Get-NetFirewallRule -Enabled True -ErrorAction Stop | Select-Object -First 100
-                $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetFirewallProfile"
+            if ($hasGetNetFirewallProfile -and $hasGetNetFirewallRule) {
+                try {
+                    $securityResults.FirewallProfiles = Get-NetFirewallProfile -ErrorAction Stop
+                    $securityResults.FirewallRules = Get-NetFirewallRule -Enabled True -ErrorAction Stop | Select-Object -First 100
+                    $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetFirewallProfile"
+                }
+                catch {
+                    $netshOutput = cmd /c "netsh advfirewall show allprofiles 2>nul"
+                    $securityResults.FirewallProfiles = $netshOutput
+                    $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "netsh"
+                }
             }
-            catch {
+            else {
+                Write-Verbose "Cmdlets de firewall indisponiveis neste runtime; seguindo para fallback netsh."
                 $netshOutput = cmd /c "netsh advfirewall show allprofiles 2>nul"
                 $securityResults.FirewallProfiles = $netshOutput
                 $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "netsh"
@@ -2076,16 +2610,43 @@ function Get-SecurityConfigurationAnalysis {
     
     try {
         if ($isLocal) {
-            try {
-                $securityResults.NetworkShares = Get-SmbShare -ErrorAction Stop
-                $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-SmbShare"
-            }
-            catch {
+            if ($hasGetSmbShare) {
                 try {
-                    $securityResults.NetworkShares = Get-WmiObject -Class Win32_Share -ErrorAction Stop
-                    $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    $securityResults.NetworkShares = Get-SmbShare -ErrorAction Stop
+                    $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-SmbShare"
                 }
                 catch {
+                    if ($hasGetWmiObject) {
+                        try {
+                            $securityResults.NetworkShares = Get-WmiObject -Class Win32_Share -ErrorAction Stop
+                            $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        }
+                        catch {
+                            $netShareOutput = cmd /c "net share 2>nul"
+                            $securityResults.NetworkShares = $netShareOutput
+                        }
+                    }
+                    else {
+                        Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback net share."
+                        $netShareOutput = cmd /c "net share 2>nul"
+                        $securityResults.NetworkShares = $netShareOutput
+                    }
+                }
+            }
+            else {
+                Write-Verbose "Get-SmbShare indisponivel neste runtime; seguindo para fallback WMI/net share."
+                if ($hasGetWmiObject) {
+                    try {
+                        $securityResults.NetworkShares = Get-WmiObject -Class Win32_Share -ErrorAction Stop
+                        $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    }
+                    catch {
+                        $netShareOutput = cmd /c "net share 2>nul"
+                        $securityResults.NetworkShares = $netShareOutput
+                    }
+                }
+                else {
+                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback net share."
                     $netShareOutput = cmd /c "net share 2>nul"
                     $securityResults.NetworkShares = $netShareOutput
                 }
@@ -2104,7 +2665,7 @@ function Get-SecurityConfigurationAnalysis {
             foreach ($path in $criticalPaths) {
                 if (Test-Path $path) {
                     try {
-                        $acl = Get-Acl $path -ErrorAction SilentlyContinue
+                        $acl = Get-Acl $path -ErrorAction Stop
                         if ($acl) {
                             $securityResults.DirectoryPermissions += [PSCustomObject]@{
                                 Path        = $path
@@ -2114,7 +2675,17 @@ function Get-SecurityConfigurationAnalysis {
                             }
                         }
                     }
-                    catch { }
+                    catch {
+                        $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                            Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                            Severity  = "ATENCAO"
+                            Category  = "Seguranca"
+                            Target    = $path
+                            Computer  = $Computer
+                            Message   = $_.Exception.Message
+                        }
+                        Write-Verbose "Falha ao obter ACL do caminho '$path': $($_.Exception.Message)"
+                    }
                 }
             }
         }
@@ -2123,7 +2694,8 @@ function Get-SecurityConfigurationAnalysis {
         Write-Warning "Erro ao obter permissoes de diretorios: $($_.Exception.Message)"
     }
     
-    $secPath = Join-Path $OutputPath $Computer "12_Seguranca"
+    $secBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+    $secPath = Join-Path -Path $secBasePath -ChildPath "12_Seguranca"
     
     if ($securityResults.LocalUsers) {
         $securityResults.LocalUsers | Export-Csv -Path (Join-Path $secPath "${Timestamp}_Usuarios_Locais.csv") -NoTypeInformation -Encoding UTF8
@@ -2395,7 +2967,8 @@ function New-HTMLNavigationPage {
     $emptyFolders = 0
     
     foreach ($folderName in $Script:FOLDER_STRUCTURE.Keys) {
-        $folderPath = Join-Path $OutputPath $Computer $folderName
+        $folderBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+        $folderPath = Join-Path -Path $folderBasePath -ChildPath $folderName
         if (Test-Path $folderPath) {
             $fileCount = (Get-ChildItem -Path $folderPath -File -ErrorAction SilentlyContinue).Count
             $totalFiles += $fileCount
@@ -2430,7 +3003,8 @@ function New-HTMLNavigationPage {
 "@
 
     foreach ($folderName in ($Script:FOLDER_STRUCTURE.Keys | Sort-Object)) {
-        $folderPath = Join-Path $OutputPath $Computer $folderName
+        $folderBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+        $folderPath = Join-Path -Path $folderBasePath -ChildPath $folderName
         $description = $Script:FOLDER_STRUCTURE[$folderName]
         $fileCount = 0
         
@@ -2526,12 +3100,13 @@ function New-ConsolidatedReportComplete {
         [array]$EventAnalysis,
         [hashtable]$SecurityResults
     )
-    
+
     Write-Host "Gerando relatorio consolidado completo..." -ForegroundColor Cyan
-    
+
     try {
-        $reportPath = Join-Path $OutputPath $Computer "14_Relatorio"
-        
+        $reportBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+        $reportPath = Join-Path -Path $reportBasePath -ChildPath "14_Relatorio"
+
         # Calcular metricas
         $totalSoftware = if ($SoftwareList) { $SoftwareList.Count } else { 0 }
         $suspiciousSoftware = if ($SoftwareList) {
@@ -2542,7 +3117,7 @@ function New-ConsolidatedReportComplete {
                 }
             }
         } else { @() }
-        
+
         $totalServices = if ($ServicesInfo.Services) { $ServicesInfo.Services.Count } else { 0 }
         $runningServices = if ($ServicesInfo.RunningServices) { $ServicesInfo.RunningServices.Count } else { 0 }
         $totalProcesses = if ($ProcessInfo.Processes) { $ProcessInfo.Processes.Count } else { 0 }
@@ -2551,12 +3126,20 @@ function New-ConsolidatedReportComplete {
         $totalUpdates = if ($UpdatesInfo.HotFixes) { $UpdatesInfo.HotFixes.Count } else { 0 }
         $criticalEvents = if ($EventAnalysis) { ($EventAnalysis | Where-Object { $_.Level -eq "Critical" -and $_.TimeCreated -gt (Get-Date).AddDays(-7) }).Count } else { 0 }
         $errorEvents = if ($EventAnalysis) { ($EventAnalysis | Where-Object { $_.Level -eq "Error" -and $_.TimeCreated -gt (Get-Date).AddDays(-7) }).Count } else { 0 }
-        
+
         $suspiciousJava = if ($JavaResults.SuspiciousJava) { $JavaResults.SuspiciousJava.Count } else { 0 }
         $suspiciousNetwork = if ($NetworkResults.SuspiciousActivity) { $NetworkResults.SuspiciousActivity.Count } else { 0 }
-        
+        $collectionNotices = if ($Script:NON_BLOCKING_NOTICES) { @($Script:NON_BLOCKING_NOTICES) } else { @() }
+        $severityOrder = @{
+            "CRITICO" = 0
+            "ERRO"    = 1
+            "ATENCAO" = 2
+            "INFO"    = 3
+        }
+        $sortedNotices = $collectionNotices | Sort-Object @{ Expression = { if ($severityOrder.ContainsKey($_.Severity)) { $severityOrder[$_.Severity] } else { 99 } } }, Category, Target, Timestamp
+
         $auditDuration = if ($Global:AuditStartTime) { ((Get-Date) - $Global:AuditStartTime).ToString('hh\:mm\:ss') } else { "Nao disponivel" }
-        
+
         $consolidatedReport = @"
 ################################################################################
                     Relatorio de Auditoria Tecnica - Sistema SCADA
@@ -2587,6 +3170,7 @@ $(if ($SystemInfo.OSInfo -and $SystemInfo.OSInfo.LastBootUpTime) { "Ultimo Boot:
 • Eventos de Erro (7 dias): $errorEvents
 • Processos Java Suspeitos: $suspiciousJava
 • Atividades de Rede Incomuns: $suspiciousNetwork
+• Avisos Nao Bloqueantes de Coleta: $($sortedNotices.Count)
 
  Informacoes de Hardware:
 ================================================================================
@@ -2622,7 +3206,7 @@ Metodo: $($disk.Method)
         if ($NetworkResults.Adapters) {
             $consolidatedReport += "• Adaptadores de Rede: $($NetworkResults.Adapters.Count)`n"
         }
-        
+
         if ($NetworkResults.Teams -and $NetworkResults.Teams.Count -gt 0) {
             $consolidatedReport += "• Teams Configurados: $($NetworkResults.Teams.Count)`n"
             foreach ($team in $NetworkResults.Teams) {
@@ -2632,7 +3216,7 @@ Metodo: $($disk.Method)
         else {
             $consolidatedReport += "• Teams de Rede: Nenhum configurado`n"
         }
-        
+
         if ($NetworkResults.Connections) {
             $consolidatedReport += "• Conexoes TCP Ativas: $($NetworkResults.Connections.Count)`n"
         }
@@ -2646,11 +3230,11 @@ Metodo: $($disk.Method)
         if ($suspiciousJava -gt 0) {
             $consolidatedReport += "ALERTA: $suspiciousJava processos Java suspeitos detectados - Requerem verificacao manual`n"
         }
-        
+
         if ($suspiciousNetwork -gt 0) {
             $consolidatedReport += "ALERTA: $suspiciousNetwork atividades de rede incomuns detectadas`n"
         }
-        
+
         if ($suspiciousSoftware.Count -gt 0) {
             $consolidatedReport += "ALERTA: $($suspiciousSoftware.Count) programas suspeitos detectados:`n"
             foreach ($software in ($suspiciousSoftware | Select-Object -First 5)) {
@@ -2686,35 +3270,35 @@ Metodo: $($disk.Method)
 "@
 
         $recommendations = @()
-        
+
         if ($DiskResults.DiskAnalysis) {
             $criticalDisks = $DiskResults.DiskAnalysis | Where-Object { $_.UsedPercent -gt 90 }
             if ($criticalDisks.Count -gt 0) {
                 $recommendations += "• URGENTE: Limpar espaco em disco nos drives: $(($criticalDisks.Drive) -join ', ')"
             }
-            
+
             $warningDisks = $DiskResults.DiskAnalysis | Where-Object { $_.UsedPercent -gt 80 -and $_.UsedPercent -le 90 }
             if ($warningDisks.Count -gt 0) {
                 $recommendations += "• Monitorar utilizacao de disco nos drives: $(($warningDisks.Drive) -join ', ')"
             }
         }
-        
+
         if ($criticalEvents -gt 5) {
             $recommendations += "• Investigar eventos criticos do sistema ($criticalEvents eventos nos ultimos 7 dias)"
         }
-        
+
         if ($errorEvents -gt 20) {
             $recommendations += "• Analisar erros recorrentes do sistema ($errorEvents eventos nos ultimos 7 dias)"
         }
-        
+
         if ($suspiciousJava -gt 0) {
             $recommendations += "• Verificar manualmente os $suspiciousJava processos Java suspeitos"
         }
-        
+
         if ($suspiciousNetwork -gt 0) {
             $recommendations += "• Investigar $suspiciousNetwork atividades de rede incomuns"
         }
-        
+
         if ($SystemInfo.OSInfo -and $SystemInfo.OSInfo.LastBootUpTime) {
             $bootTime = if ($SystemInfo.OSInfo.LastBootUpTime -is [string]) {
                 [DateTime]::ParseExact($SystemInfo.OSInfo.LastBootUpTime.Substring(0, 14), "yyyyMMddHHmmss", $null)
@@ -2733,6 +3317,21 @@ Metodo: $($disk.Method)
         }
         else {
             $consolidatedReport += ($recommendations -join "`n") + "`n"
+        }
+
+        $consolidatedReport += @"
+
+ Avisos Nao Bloqueantes de Coleta:
+================================================================================
+"@
+
+        if ($sortedNotices.Count -eq 0) {
+            $consolidatedReport += "Nenhum aviso nao bloqueante registrado durante a coleta.`n"
+        }
+        else {
+            foreach ($notice in $sortedNotices) {
+                $consolidatedReport += "[$($notice.Severity)] $($notice.Category) | $($notice.Target) | $($notice.Message)`n"
+            }
         }
 
         $consolidatedReport += @"
@@ -2759,10 +3358,18 @@ Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao col
 ================================================================================
 "@
 
+        if ($sortedNotices.Count -gt 0) {
+            $sortedNotices | Export-Csv -Path (Join-Path $reportPath "${Timestamp}_Avisos_Coleta.csv") -NoTypeInformation -Encoding UTF8
+            $sortedNotices |
+                Format-Table Timestamp, Severity, Category, Target, Message -AutoSize |
+                Out-File -FilePath (Join-Path $reportPath "${Timestamp}_Avisos_Coleta.txt") -Encoding UTF8 -Width 300
+        }
+
         foreach ($folderName in ($Script:FOLDER_STRUCTURE.Keys | Sort-Object)) {
-            $folderPath = Join-Path $OutputPath $Computer $folderName
+            $folderBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
+            $folderPath = Join-Path -Path $folderBasePath -ChildPath $folderName
             $description = $Script:FOLDER_STRUCTURE[$folderName]
-            
+
             if (Test-Path $folderPath) {
                 $fileCount = (Get-ChildItem -Path $folderPath -File).Count
                 $consolidatedReport += "$folderName ($description): $fileCount arquivos`n"
@@ -2806,6 +3413,7 @@ Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao col
                 SuspiciousNetwork  = $suspiciousNetwork
             }
             Recommendations = $recommendations
+            CollectionNotices = $sortedNotices
             Status          = if ($recommendations.Count -eq 0) { "OK" } elseif ($recommendations -match "URGENTE") { "CRITICO" } else { "ATENCAO" }
         }
         
@@ -2818,6 +3426,8 @@ Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao col
         return @{
             ReportPath      = (Join-Path $reportPath "Relatorio_Final_$Computer.txt")
             JsonPath        = (Join-Path $reportPath "Relatorio_Final_$Computer.json")
+            NoticeLogPath   = if ($sortedNotices.Count -gt 0) { (Join-Path $reportPath "${Timestamp}_Avisos_Coleta.txt") } else { $null }
+            NoticeCount     = $sortedNotices.Count
             Status          = $jsonReport.Status
             Recommendations = $recommendations
         }
@@ -2838,6 +3448,7 @@ function Start-SystemAudit {
     
     $Global:AuditStartTime = Get-Date
     $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
+    $Script:NON_BLOCKING_NOTICES = @()
     
     Write-Host "################################################################################" -ForegroundColor Cyan
     Write-Host "                    BASELINE NMR5 10.2 - PIC.EE.0246 CORRIGIDO" -ForegroundColor Cyan
@@ -2905,7 +3516,8 @@ function Start-SystemAudit {
     Write-Host "`n[4/11] Analisando software instalado..." -ForegroundColor Yellow
     $softwareList = Get-RemoteProgram -ComputerName $Computer
     if ($softwareList -and $softwareList.Count -gt 0) {
-        $softwarePath = Join-Path $OutputBasePath $Computer "03_Software"
+        $softwareBasePath = Join-Path -Path $OutputBasePath -ChildPath $Computer
+        $softwarePath = Join-Path -Path $softwareBasePath -ChildPath "03_Software"
         $softwareList | Export-Csv -Path (Join-Path $softwarePath "${timestamp}_Software_Instalado.csv") -NoTypeInformation -Encoding UTF8
         $softwareList | Format-Table -AutoSize | Out-File -FilePath (Join-Path $softwarePath "${timestamp}_Software_Instalado.txt") -Encoding UTF8 -Width 300
         Write-Host "  Software coletado: $($softwareList.Count) programas" -ForegroundColor Green
@@ -2994,9 +3606,15 @@ function Start-SystemAudit {
     }
     
     Write-Host "`nArquivos principais gerados:" -ForegroundColor Cyan
-    Write-Host "  • Relatorio Final: $(Join-Path $OutputBasePath $Computer '14_Relatorio' "Relatorio_Final_$Computer.txt")" -ForegroundColor Gray
+    $finalReportBasePath = Join-Path -Path $OutputBasePath -ChildPath $Computer
+    $finalReportPath = Join-Path -Path (Join-Path -Path $finalReportBasePath -ChildPath '14_Relatorio') -ChildPath "Relatorio_Final_$Computer.txt"
+    Write-Host "  • Relatorio Final: $finalReportPath" -ForegroundColor Gray
     Write-Host "  • Navegacao HTML: $htmlPage" -ForegroundColor Gray
-    Write-Host "  • Dados JSON: $(Join-Path $OutputBasePath $Computer '14_Relatorio' "Relatorio_Final_$Computer.json")" -ForegroundColor Gray
+    $finalJsonPath = Join-Path -Path (Join-Path -Path $finalReportBasePath -ChildPath '14_Relatorio') -ChildPath "Relatorio_Final_$Computer.json"
+    Write-Host "  • Dados JSON: $finalJsonPath" -ForegroundColor Gray
+    if ($finalReport -and $finalReport.NoticeCount -gt 0 -and $finalReport.NoticeLogPath) {
+        Write-Host "  • Avisos de Coleta: $($finalReport.NoticeCount) item(ns) em $($finalReport.NoticeLogPath)" -ForegroundColor Yellow
+    }
     
     Write-Host "`n################################################################################" -ForegroundColor Green
     
