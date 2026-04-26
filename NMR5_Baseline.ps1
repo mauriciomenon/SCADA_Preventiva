@@ -153,12 +153,19 @@ function Test-PowerShellVersion {
 }
 
 # Funcao para verificar versao do SO
-function Test-OSVersion {
+function Get-OSVersion {
     try {
         $osVersion = (Get-CimInstance -ClassName CIM_OperatingSystem -ErrorAction Stop).Version
     }
     catch {
-        $osVersion = (Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop).Version
+        $wmiCommand = Get-Command -Name Get-WmiObject -ErrorAction SilentlyContinue
+        if ($null -eq $wmiCommand) {
+            Write-Verbose "Get-WmiObject nao esta disponivel no runtime atual para fallback de versao do SO."
+            $osVersion = "Desconhecida"
+        }
+        else {
+            $osVersion = (Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop).Version
+        }
     }
 
     Write-Host "Versao do Windows: $osVersion" -ForegroundColor Cyan
@@ -240,6 +247,7 @@ function Invoke-AllMethodsWithQuality {
     )
     
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
+    $hasGetWmiObject = $null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue)
     $results = @{}
     $qualityScores = @{}
     
@@ -273,6 +281,9 @@ function Invoke-AllMethodsWithQuality {
     # METODO 2: WMI (Prioridade 2)
     try {
         Write-Host "      • Tentando WMI..." -ForegroundColor Gray
+        if (-not $hasGetWmiObject) {
+            throw "Get-WmiObject indisponivel neste runtime."
+        }
         if ($isLocal) {
             $results["WMI"] = & $WMICommand
         } else {
@@ -370,8 +381,28 @@ function Get-HardwareInformationComplete {
     $hwPath = Join-Path -Path $hardwareBasePath -ChildPath "01_Hw"
     
     # Definir comandos para cada metodo
-    $cimCPU = { Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop }
-    $wmiCPU = { Get-WmiObject -Class Win32_Processor -ErrorAction Stop }
+    $cimCPU = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_Processor -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop
+        }
+    }
+    $wmiCPU = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_Processor -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_Processor -ErrorAction Stop
+        }
+    }
     $wmicCPU = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp cpu get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic cpu get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
     $cmdCPU = { cmd /c "wmic cpu get Name,Manufacturer,MaxClockSpeed,NumberOfCores,NumberOfLogicalProcessors /format:table 2>nul" }
     
@@ -379,16 +410,56 @@ function Get-HardwareInformationComplete {
     $cpuResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "CPU" -CIMCommand $cimCPU -WMICommand $wmiCPU -WMICCommand $wmicCPU -CMDCommand $cmdCPU -ComplementarPath $complementarPath
     
     # RAM/Memory
-    $cimRAM = { Get-CimInstance -ClassName Win32_PhysicalMemory -ErrorAction Stop }
-    $wmiRAM = { Get-WmiObject -Class Win32_PhysicalMemory -ErrorAction Stop }
+    $cimRAM = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_PhysicalMemory -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_PhysicalMemory -ErrorAction Stop
+        }
+    }
+    $wmiRAM = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_PhysicalMemory -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_PhysicalMemory -ErrorAction Stop
+        }
+    }
     $wmicRAM = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp memorychip get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Capacity } } else { cmd /c "wmic memorychip get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Capacity } } }
     $cmdRAM = { cmd /c "wmic memorychip get Manufacturer,PartNumber,Capacity,Speed,ConfiguredClockSpeed /format:table 2>nul" }
     
     $ramResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "Memory" -CIMCommand $cimRAM -WMICommand $wmiRAM -WMICCommand $wmicRAM -CMDCommand $cmdRAM -ComplementarPath $complementarPath
     
     # Motherboard/ComputerSystem
-    $cimMB = { Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop }
-    $wmiMB = { Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop }
+    $cimMB = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        }
+    }
+    $wmiMB = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_ComputerSystem -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop
+        }
+    }
     $wmicMB = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp computersystem get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic computersystem get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
     $cmdMB = { cmd /c "wmic computersystem get Manufacturer,Model,TotalPhysicalMemory,NumberOfProcessors /format:table 2>nul" }
     
@@ -439,16 +510,56 @@ function Get-BIOSInformationComplete {
     $biosPath = Join-Path -Path $biosBasePath -ChildPath "02_Hw_BIOS"
     
     # BIOS
-    $cimBIOS = { Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop }
-    $wmiBIOS = { Get-WmiObject -Class Win32_BIOS -ErrorAction Stop }
+    $cimBIOS = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_BIOS -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop
+        }
+    }
+    $wmiBIOS = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_BIOS -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_BIOS -ErrorAction Stop
+        }
+    }
     $wmicBIOS = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp bios get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Version } } else { cmd /c "wmic bios get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Version } } }
     $cmdBIOS = { cmd /c "wmic bios get Manufacturer,Name,Version,Status,BIOSVERSION,Description,InstallDate,PrimaryBios,releasedate,serialnumber /format:table 2>nul" }
     
     $biosResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "BIOS" -CIMCommand $cimBIOS -WMICommand $wmiBIOS -WMICCommand $wmicBIOS -CMDCommand $cmdBIOS -ComplementarPath $complementarPath
     
     # BaseBoard
-    $cimBoard = { Get-CimInstance -ClassName Win32_BaseBoard -ErrorAction Stop }
-    $wmiBoard = { Get-WmiObject -Class Win32_BaseBoard -ErrorAction Stop }
+    $cimBoard = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_BaseBoard -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_BaseBoard -ErrorAction Stop
+        }
+    }
+    $wmiBoard = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_BaseBoard -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_BaseBoard -ErrorAction Stop
+        }
+    }
     $wmicBoard = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp baseboard get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Product } } else { cmd /c "wmic baseboard get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Product } } }
     $cmdBoard = { cmd /c "wmic baseboard get Manufacturer,Product,Version,SerialNumber /format:table 2>nul" }
     
@@ -492,8 +603,28 @@ function Get-ServicesAnalysisComplete {
     $servicesPath = Join-Path -Path $servicesBasePath -ChildPath "05_Servicos"
     
     # Services
-    $cimSvc = { Get-CimInstance -ClassName Win32_Service -ErrorAction Stop }
-    $wmiSvc = { Get-WmiObject -Class Win32_Service -ErrorAction Stop }
+    $cimSvc = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_Service -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_Service -ErrorAction Stop
+        }
+    }
+    $wmiSvc = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_Service -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_Service -ErrorAction Stop
+        }
+    }
     $wmicSvc = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp service get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic service get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
     $cmdSvc = { cmd /c "wmic service get name,caption,servicetype,startmode,pathname,state /format:table 2>nul" }
     
@@ -576,8 +707,28 @@ function Get-ProcessAnalysisComplete {
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
     
     # Processes
-    $cimProc = { Get-CimInstance -ClassName Win32_Process -ErrorAction Stop }
-    $wmiProc = { Get-WmiObject -Class Win32_Process -ErrorAction Stop }
+    $cimProc = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_Process -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_Process -ErrorAction Stop
+        }
+    }
+    $wmiProc = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_Process -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_Process -ErrorAction Stop
+        }
+    }
     $wmicProc = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp process get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic process get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
     $cmdProc = { cmd /c "tasklist /fo csv 2>nul" | ConvertFrom-Csv }
     
@@ -649,8 +800,28 @@ function Get-DriversAnalysisComplete {
     $driversPath = Join-Path -Path $driversBasePath -ChildPath "07_Drivers"
     
     # System Drivers
-    $cimSysDriver = { Get-CimInstance -ClassName Win32_SystemDriver -ErrorAction Stop }
-    $wmiSysDriver = { Get-WmiObject -Class Win32_SystemDriver -ErrorAction Stop }
+    $cimSysDriver = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_SystemDriver -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_SystemDriver -ErrorAction Stop
+        }
+    }
+    $wmiSysDriver = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_SystemDriver -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_SystemDriver -ErrorAction Stop
+        }
+    }
     $wmicSysDriver = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp sysdriver get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic sysdriver get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
     $cmdSysDriver = { cmd /c "wmic sysdriver get Name,State,Status,PathName /format:table 2>nul" }
     
@@ -730,10 +901,35 @@ function Get-UpdatesAnalysisComplete {
     $updatesPath = Join-Path -Path $updatesBasePath -ChildPath "04_Atualizacoes"
     
     # HotFixes/Updates
-    $cimHotfix = { Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop }
-    $wmiHotfix = { Get-WmiObject -Class Win32_QuickFixEngineering -ErrorAction Stop }
+    $cimHotfix = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-CimInstance -ClassName Win32_QuickFixEngineering -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop
+        }
+    }
+    $wmiHotfix = {
+        param(
+            [string]$ComputerName
+        )
+        if ($ComputerName -and $ComputerName -ne "localhost") {
+            Get-WmiObject -Class Win32_QuickFixEngineering -ComputerName $ComputerName -ErrorAction Stop
+        }
+        else {
+            Get-WmiObject -Class Win32_QuickFixEngineering -ErrorAction Stop
+        }
+    }
     $wmicHotfix = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp qfe get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.HotFixID } } else { cmd /c "wmic qfe get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.HotFixID } } }
-    $cmdHotfix = { Get-HotFix | Select-Object HotFixID, Description, InstalledBy, InstalledOn }
+    $cmdHotfix = {
+        if ($null -eq (Get-Command -Name Get-HotFix -ErrorAction SilentlyContinue)) {
+            throw "Get-HotFix indisponivel neste runtime."
+        }
+        Get-HotFix | Select-Object HotFixID, Description, InstalledBy, InstalledOn
+    }
     
     $hotfixResults = Invoke-AllMethodsWithQuality -Computer $Computer -DataType "HotFixes" -CIMCommand $cimHotfix -WMICommand $wmiHotfix -WMICCommand $wmicHotfix -CMDCommand $cmdHotfix -ComplementarPath $complementarPath
     
@@ -3481,7 +3677,7 @@ function Start-SystemAudit {
     Write-Host "`nExecutando verificacoes preliminares..." -ForegroundColor Yellow
     $adminPrivilege = Test-AdminPrivilege
     $psVersion = Test-PowerShellVersion
-    $osVersion = Test-OSVersion
+    $osVersion = Get-OSVersion
     $currentEnvironment = Get-Environment
     
     Write-Host "Privilegios admin: $(if ($adminPrivilege) { 'Sim' } else { 'Nao' })" -ForegroundColor $(if ($adminPrivilege) { 'Green' } else { 'Yellow' })
