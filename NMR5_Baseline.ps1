@@ -1016,6 +1016,7 @@ $(($hotfixResults.BestResult | Sort-Object InstalledOn -Descending | Select-Obje
 
 # Funcao Get-RemoteProgram (mantida do original)
 function Get-RemoteProgram {
+    [OutputType([System.Object[]])]
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline = $true, Position = 0)]
@@ -2732,6 +2733,7 @@ Eventos de Seguranca Relevantes:
 
 # Funcao para gerar relatorio de eventos com linha de tempo organizado
 function New-EventTimelineReport {
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Low")]
     param(
         [array]$EventAnalysis,
         [string]$OutputPath,
@@ -2777,8 +2779,14 @@ Eventos ordenados cronologicamente (mais recentes primeiro):
         $timelineReport += "Descricao: $($timelineEvent.TranslatedDescription)`n`n"
     }
     
-    $timelineReport | Out-File -FilePath (Join-Path $eventPath "${Timestamp}_Timeline_Eventos.txt") -Encoding UTF8
-    $EventAnalysis | Export-Csv -Path (Join-Path $eventPath "${Timestamp}_Timeline_Eventos.csv") -NoTypeInformation -Encoding UTF8
+    $timelineTxtPath = Join-Path $eventPath "${Timestamp}_Timeline_Eventos.txt"
+    $timelineCsvPath = Join-Path $eventPath "${Timestamp}_Timeline_Eventos.csv"
+    if ($PSCmdlet.ShouldProcess($timelineTxtPath, "Salvar relatorio principal de linha de tempo")) {
+        $timelineReport | Out-File -FilePath $timelineTxtPath -Encoding UTF8
+    }
+    if ($PSCmdlet.ShouldProcess($timelineCsvPath, "Salvar eventos da linha de tempo em CSV")) {
+        $EventAnalysis | Export-Csv -Path $timelineCsvPath -NoTypeInformation -Encoding UTF8
+    }
     
     $familyReport = @"
 Linha de Tempo de Eventos por Familia e Criticidade
@@ -2807,13 +2815,22 @@ Sistema: $Computer
         }
     }
     
-    $familyReport | Out-File -FilePath (Join-Path $eventPath "${Timestamp}_Timeline_Por_Familia.txt") -Encoding UTF8
+    $familyReportPath = Join-Path $eventPath "${Timestamp}_Timeline_Por_Familia.txt"
+    if ($PSCmdlet.ShouldProcess($familyReportPath, "Salvar linha de tempo por familia")) {
+        $familyReport | Out-File -FilePath $familyReportPath -Encoding UTF8
+    }
     
     foreach ($categoryName in $eventCategories.Keys) {
         $categoryEvents = $eventCategories[$categoryName]
         if ($categoryEvents.Count -gt 0) {
-            $categoryEvents | Export-Csv -Path (Join-Path $eventPath "${Timestamp}_Eventos_${categoryName}.csv") -NoTypeInformation -Encoding UTF8
-            $categoryEvents | Format-Table TimeCreated, Id, Severity, Source, TranslatedDescription -AutoSize | Out-File -FilePath (Join-Path $eventPath "${Timestamp}_Eventos_${categoryName}.txt") -Encoding UTF8
+            $categoryCsvPath = Join-Path $eventPath "${Timestamp}_Eventos_${categoryName}.csv"
+            $categoryTxtPath = Join-Path $eventPath "${Timestamp}_Eventos_${categoryName}.txt"
+            if ($PSCmdlet.ShouldProcess($categoryCsvPath, "Salvar eventos da categoria $categoryName em CSV")) {
+                $categoryEvents | Export-Csv -Path $categoryCsvPath -NoTypeInformation -Encoding UTF8
+            }
+            if ($PSCmdlet.ShouldProcess($categoryTxtPath, "Salvar eventos da categoria $categoryName em texto")) {
+                $categoryEvents | Format-Table TimeCreated, Id, Severity, Source, TranslatedDescription -AutoSize | Out-File -FilePath $categoryTxtPath -Encoding UTF8
+            }
         }
     }
     
@@ -3147,6 +3164,7 @@ function Get-SecurityConfigurationAnalysis {
 
 # Funcao para criar pagina HTML CORRIGIDA e navegavel
 function New-HTMLNavigationPage {
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Low")]
     param(
         [string]$OutputPath,
         [string]$Computer,
@@ -3493,7 +3511,9 @@ function New-HTMLNavigationPage {
 "@
 
     $htmlPath = Join-Path $OutputPath "$Computer.html"
-    $htmlContent | Out-File -FilePath $htmlPath -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($htmlPath, "Salvar pagina HTML navegavel")) {
+        $htmlContent | Out-File -FilePath $htmlPath -Encoding UTF8
+    }
     
     Write-Host "Pagina HTML navegavel criada: $htmlPath" -ForegroundColor Green
     return $htmlPath
@@ -3501,6 +3521,8 @@ function New-HTMLNavigationPage {
 
 # Funcao para gerar relatorio final consolidado CORRIGIDO
 function New-ConsolidatedReportComplete {
+    [OutputType([hashtable])]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Low")]
     param(
         [string]$Computer,
         [string]$OutputPath,
@@ -3569,7 +3591,7 @@ function New-ConsolidatedReportComplete {
             DirectoryPermissions   = if ($securityResultsSafe.DirectoryPermissions) { @($securityResultsSafe.DirectoryPermissions).Count } else { 0 }
         }
 
-        $auditDuration = if ($Global:AuditStartTime) { ((Get-Date) - $Global:AuditStartTime).ToString('hh\:mm\:ss') } else { "Nao disponivel" }
+        $auditDuration = if ($Script:AuditStartTime) { ((Get-Date) - $Script:AuditStartTime).ToString('hh\:mm\:ss') } else { "Nao disponivel" }
 
         $consolidatedReport = @"
 ################################################################################
@@ -3792,10 +3814,16 @@ Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao col
 "@
 
         if ($sortedNotices.Count -gt 0) {
-            $sortedNotices | Export-Csv -Path (Join-Path $reportPath "${Timestamp}_Avisos_Coleta.csv") -NoTypeInformation -Encoding UTF8
-            $sortedNotices |
-                Format-Table Timestamp, Severity, Category, Target, Message -AutoSize |
-                Out-File -FilePath (Join-Path $reportPath "${Timestamp}_Avisos_Coleta.txt") -Encoding UTF8 -Width 300
+            $noticeCsvPath = Join-Path $reportPath "${Timestamp}_Avisos_Coleta.csv"
+            $noticeTxtPath = Join-Path $reportPath "${Timestamp}_Avisos_Coleta.txt"
+            if ($PSCmdlet.ShouldProcess($noticeCsvPath, "Salvar avisos de coleta em CSV")) {
+                $sortedNotices | Export-Csv -Path $noticeCsvPath -NoTypeInformation -Encoding UTF8
+            }
+            if ($PSCmdlet.ShouldProcess($noticeTxtPath, "Salvar avisos de coleta em texto")) {
+                $sortedNotices |
+                    Format-Table Timestamp, Severity, Category, Target, Message -AutoSize |
+                    Out-File -FilePath $noticeTxtPath -Encoding UTF8 -Width 300
+            }
         }
 
         foreach ($folderName in ($Script:FOLDER_STRUCTURE.Keys | Sort-Object)) {
@@ -3820,7 +3848,10 @@ Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao col
 "@
 
         # Salvar relatorio consolidado
-        $consolidatedReport | Out-File -FilePath (Join-Path $reportPath "Relatorio_Final_$Computer.txt") -Encoding UTF8
+        $txtReportPath = Join-Path $reportPath "Relatorio_Final_$Computer.txt"
+        if ($PSCmdlet.ShouldProcess($txtReportPath, "Salvar relatorio consolidado texto")) {
+            $consolidatedReport | Out-File -FilePath $txtReportPath -Encoding UTF8
+        }
         
         # Salvar versao JSON estruturada para processamento posterior
         $jsonReport = @{
@@ -3851,16 +3882,19 @@ Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao col
             Status          = if ($recommendations.Count -eq 0) { "OK" } elseif ($recommendations -match "URGENTE") { "CRITICO" } else { "ATENCAO" }
         }
         
-        $jsonReport | ConvertTo-Json -Depth 3 | Out-File -FilePath (Join-Path $reportPath "Relatorio_Final_$Computer.json") -Encoding UTF8
+        $jsonReportPath = Join-Path $reportPath "Relatorio_Final_$Computer.json"
+        if ($PSCmdlet.ShouldProcess($jsonReportPath, "Salvar relatorio consolidado JSON")) {
+            $jsonReport | ConvertTo-Json -Depth 3 | Out-File -FilePath $jsonReportPath -Encoding UTF8
+        }
         
         Write-Host "Relatorio consolidado gerado com sucesso!" -ForegroundColor Green
         Write-Host "  - Arquivo TXT: $(Join-Path $reportPath "Relatorio_Final_$Computer.txt")" -ForegroundColor Gray
         Write-Host "  - Arquivo JSON: $(Join-Path $reportPath "Relatorio_Final_$Computer.json")" -ForegroundColor Gray
         
         return @{
-            ReportPath      = (Join-Path $reportPath "Relatorio_Final_$Computer.txt")
-            JsonPath        = (Join-Path $reportPath "Relatorio_Final_$Computer.json")
-            NoticeLogPath   = if ($sortedNotices.Count -gt 0) { (Join-Path $reportPath "${Timestamp}_Avisos_Coleta.txt") } else { $null }
+            ReportPath      = $txtReportPath
+            JsonPath        = $jsonReportPath
+            NoticeLogPath   = if ($sortedNotices.Count -gt 0) { $noticeTxtPath } else { $null }
             NoticeCount     = $sortedNotices.Count
             Status          = $jsonReport.Status
             Recommendations = $recommendations
@@ -3874,13 +3908,20 @@ Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao col
 
 # Funcao principal CORRIGIDA para execucao da auditoria
 function Start-SystemAudit {
+    [OutputType([hashtable])]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Low")]
     param(
         [string]$Computer = "localhost",
         [string]$OutputBasePath,
         [string]$Domain = "LOCAL"
     )
     
-    $Global:AuditStartTime = Get-Date
+    if (-not $PSCmdlet.ShouldProcess($Computer, "Executar auditoria completa")) {
+        Write-Verbose "Execucao da auditoria cancelada por ShouldProcess."
+        return
+    }
+
+    $Script:AuditStartTime = Get-Date
     $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
     $Script:NON_BLOCKING_NOTICES = @()
     
@@ -4013,7 +4054,7 @@ function Start-SystemAudit {
     Write-Host "                           AUDITORIA CONCLUIDA COM SUCESSO" -ForegroundColor Green
     Write-Host "################################################################################" -ForegroundColor Green
     
-    $auditDuration = (Get-Date) - $Global:AuditStartTime
+    $auditDuration = (Get-Date) - $Script:AuditStartTime
     Write-Host "Duracao total: $($auditDuration.ToString('hh\:mm\:ss'))" -ForegroundColor White
     Write-Host "Sistema auditado: $Computer" -ForegroundColor White
     Write-Host "Pasta de saida: $OutputBasePath" -ForegroundColor White
