@@ -1464,6 +1464,7 @@ function Get-NetworkAnalysisComplete {
             $remoteManagementReachable = $probeClient.ConnectAsync($Computer, 135).Wait(2000)
         }
         catch {
+            Write-Verbose "Falha ao testar conectividade com $Computer na porta 135: $($_.Exception.Message)"
             $remoteManagementReachable = $false
         }
         finally {
@@ -2136,7 +2137,13 @@ function Get-DiskUsageAnalysisComplete {
                                     VisualBar      = "$folderBar $folderPercent%"
                                     FileCount      = $folder1FileCount
                                     Level          = 1
-                                    Owner          = try { (Get-Acl $folder1.FullName -ErrorAction SilentlyContinue).Owner } catch { "Desconhecido" }
+                                    Owner          = try {
+                                        (Get-Acl $folder1.FullName -ErrorAction SilentlyContinue).Owner
+                                    }
+                                    catch {
+                                        Write-Verbose "Falha ao obter owner da pasta '$($folder1.FullName)': $($_.Exception.Message)"
+                                        "Desconhecido"
+                                    }
                                 }
                             }
                         }
@@ -3864,10 +3871,17 @@ function Invoke-SystemAudit {
             $OutputBasePath = Join-Path (Get-Location) "Audit_Results_$timestamp"
         }
         
+        # Script raiz para execucao em jobs
+        $parallelAuditScript = if ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path } else { $MyInvocation.MyCommand.Definition }
+        $useParallelJobs = $ParallelExecution -and $targetComputers.Count -gt 1 -and -not [string]::IsNullOrWhiteSpace($parallelAuditScript)
+        if ($ParallelExecution -and -not $useParallelJobs) {
+            Write-Warning "Execucao paralela nao disponivel neste contexto porque o caminho do script nao foi identificado; continuando em modo sequencial."
+        }
+        
         # Executar auditoria
         $results = @()
         
-        if ($ParallelExecution -and $targetComputers.Count -gt 1) {
+        if ($useParallelJobs) {
             Write-Host "`nExecutando auditoria em paralelo (max $MaxParallelJobs jobs)..." -ForegroundColor Yellow
             
             $jobs = @()
@@ -3878,13 +3892,10 @@ function Invoke-SystemAudit {
                 while ($jobs.Count -lt $MaxParallelJobs -and $jobQueue.Count -gt 0) {
                     $computer = $jobQueue.Dequeue()
                     $job = Start-Job -ScriptBlock {
-                        param($comp, $outputPath, $scriptContent)
-                        
-                        # Re-criar funcoes no contexto do job
-                        Invoke-Expression $scriptContent
-                        
-                        return Start-SystemAudit -Computer $comp -OutputBasePath $outputPath -Domain "AUTO"
-                    } -ArgumentList $computer, $OutputBasePath, $MyInvocation.MyCommand.Definition
+                        # Recriar funcoes no contexto do job
+                        . $using:parallelAuditScript
+                        return Start-SystemAudit -Computer $using:computer -OutputBasePath $using:OutputBasePath -Domain "AUTO"
+                    }
                     
                     $jobs += $job
                     Write-Host "  Iniciado job para $computer (Job ID: $($job.Id))" -ForegroundColor Gray
