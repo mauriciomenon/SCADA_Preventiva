@@ -1534,6 +1534,16 @@ function Get-NetworkAnalysisComplete {
                                 $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
                                 $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
                             }
+                            else {
+                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                    Severity  = "ATENCAO"
+                                    Category  = "Rede"
+                                    Target    = "Adaptadores"
+                                    Computer  = $Computer
+                                    Message   = "WMIC local indisponivel para fallback de adaptadores: $($_.Exception.Message)"
+                                }
+                            }
                         }
                     }
                     else {
@@ -1559,6 +1569,16 @@ function Get-NetworkAnalysisComplete {
                             $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
                             $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
                         }
+                        else {
+                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                Severity  = "ATENCAO"
+                                Category  = "Rede"
+                                Target    = "Adaptadores"
+                                Computer  = $Computer
+                                Message   = "WMIC local indisponivel para fallback secundario de adaptadores."
+                            }
+                        }
                     }
                 }
                 else {
@@ -1578,15 +1598,25 @@ function Get-NetworkAnalysisComplete {
                         $networkResults.Adapters = Get-WmiObject -Class Win32_NetworkAdapter -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
                         $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI-Remote"
                     }
-                    catch {
-                        $wmicNet = cmd /c "wmic /node:$Computer path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
-                        if ($wmicNet) {
-                            $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
-                            $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC-Remote"
+                        catch {
+                            $wmicNet = cmd /c "wmic /node:$Computer path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
+                            if ($wmicNet) {
+                                $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
+                                $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC-Remote"
+                            }
+                            else {
+                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                    Severity  = "ATENCAO"
+                                    Category  = "Rede"
+                                    Target    = "Adaptadores"
+                                    Computer  = $Computer
+                                    Message   = "WMIC remoto indisponivel para fallback de adaptadores."
+                                }
+                            }
                         }
                     }
-                }
-                else {
+                    else {
                     Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de adaptadores."
                     $wmicNet = cmd /c "wmic /node:$Computer path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
                     if ($wmicNet) {
@@ -1601,15 +1631,23 @@ function Get-NetworkAnalysisComplete {
                     Message = "Host remoto sem resposta rapida para gerenciamento WMI."
                 }
             }
-        }
-    }
-    catch {
-        $networkNotices += [PSCustomObject]@{
-            Target  = "Adaptadores"
-            Message = $_.Exception.Message
-        }
-        Write-Verbose "Erro ao obter adaptadores de rede: $($_.Exception.Message)"
-    }
+                }
+            }
+            catch {
+                $networkNotices += [PSCustomObject]@{
+                    Target  = "Adaptadores"
+                    Message = $_.Exception.Message
+                }
+                Write-Verbose "Erro ao obter adaptadores de rede: $($_.Exception.Message)"
+                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    Severity  = "ERRO"
+                    Category  = "Rede"
+                    Target    = "Adaptadores"
+                    Computer  = $Computer
+                    Message   = $_.Exception.Message
+                }
+            }
 
     Write-Host "  * Verificando teaming de interfaces..." -ForegroundColor White
     try {
@@ -1623,6 +1661,14 @@ function Get-NetworkAnalysisComplete {
                 }
                 catch {
                     Write-Verbose "Teaming nao disponivel ou nao configurado"
+                    $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                        Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                        Severity  = "ATENCAO"
+                        Category  = "Rede"
+                        Target    = "Teaming"
+                        Computer  = $Computer
+                        Message   = "Falha na verificacao de teaming local nesta coletoria."
+                    }
                     $networkResults.Teams = @()
                     $networkResults.TeamMembers = @()
                 }
@@ -1641,13 +1687,21 @@ function Get-NetworkAnalysisComplete {
             }
         }
     }
-    catch {
-        $networkNotices += [PSCustomObject]@{
-            Target  = "Teaming"
-            Message = $_.Exception.Message
-        }
-        Write-Verbose "Erro ao verificar teaming: $($_.Exception.Message)"
-    }
+            catch {
+                $networkNotices += [PSCustomObject]@{
+                    Target  = "Teaming"
+                    Message = $_.Exception.Message
+                }
+                Write-Verbose "Erro ao verificar teaming: $($_.Exception.Message)"
+                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    Severity  = "ERRO"
+                    Category  = "Rede"
+                    Target    = "Teaming"
+                    Computer  = $Computer
+                    Message   = $_.Exception.Message
+                }
+            }
 
     Write-Host "  * Coletando configuracoes IP..." -ForegroundColor White
     try {
@@ -1665,8 +1719,20 @@ function Get-NetworkAnalysisComplete {
                         }
                         catch {
                             $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
-                            $networkResults.IPConfig = $ipconfigOutput
-                            $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
+                            if ($ipconfigOutput) {
+                                $networkResults.IPConfig = $ipconfigOutput
+                                $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
+                            }
+                            else {
+                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                    Severity  = "ATENCAO"
+                                    Category  = "Rede"
+                                    Target    = "Configuracao IP"
+                                    Computer  = $Computer
+                                    Message   = "Fallback ipconfig local falhou para coletar IPConfig."
+                                }
+                            }
                         }
                     }
                     else {
@@ -1686,8 +1752,20 @@ function Get-NetworkAnalysisComplete {
                     }
                     catch {
                         $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
-                        $networkResults.IPConfig = $ipconfigOutput
-                        $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
+                        if ($ipconfigOutput) {
+                            $networkResults.IPConfig = $ipconfigOutput
+                            $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
+                        }
+                        else {
+                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                Severity  = "ATENCAO"
+                                Category  = "Rede"
+                                Target    = "Configuracao IP"
+                                Computer  = $Computer
+                                Message   = "Fallback ipconfig remoto/local falhou para coletar IPConfig."
+                            }
+                        }
                     }
                 }
                 else {
@@ -1721,13 +1799,21 @@ function Get-NetworkAnalysisComplete {
             }
         }
     }
-    catch {
-        $networkNotices += [PSCustomObject]@{
-            Target  = "Configuracao IP"
-            Message = $_.Exception.Message
-        }
-        Write-Verbose "Erro ao obter configuracoes IP: $($_.Exception.Message)"
-    }
+            catch {
+                $networkNotices += [PSCustomObject]@{
+                    Target  = "Configuracao IP"
+                    Message = $_.Exception.Message
+                }
+                Write-Verbose "Erro ao obter configuracoes IP: $($_.Exception.Message)"
+                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    Severity  = "ERRO"
+                    Category  = "Rede"
+                    Target    = "Configuracao IP"
+                    Computer  = $Computer
+                    Message   = $_.Exception.Message
+                }
+            }
 
     Write-Host "  * Analisando conexoes ativas..." -ForegroundColor White
     try {
@@ -1739,14 +1825,24 @@ function Get-NetworkAnalysisComplete {
                     $networkResults.Connections | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetTCPConnection"
                     $networkResults.UDPEndpoints | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetUDPEndpoint"
                 }
-                catch {
-                    $netstatOutput = cmd /c "netstat -ano 2>nul"
-                    if ($netstatOutput) {
-                        $networkResults.Connections = $netstatOutput | Where-Object { $_ -match "TCP|UDP" }
-                        $networkResults.Connections | Add-Member -NotePropertyName "Method" -NotePropertyValue "netstat"
+                    catch {
+                        $netstatOutput = cmd /c "netstat -ano 2>nul"
+                        if ($netstatOutput) {
+                            $networkResults.Connections = $netstatOutput | Where-Object { $_ -match "TCP|UDP" }
+                            $networkResults.Connections | Add-Member -NotePropertyName "Method" -NotePropertyValue "netstat"
+                        }
+                        else {
+                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                Severity  = "ATENCAO"
+                                Category  = "Rede"
+                                Target    = "Conexoes"
+                                Computer  = $Computer
+                                Message   = "Fallback netstat falhou para conexoes ativas."
+                            }
+                        }
                     }
                 }
-            }
             else {
                 Write-Verbose "Cmdlets Get-NetTCPConnection/Get-NetUDPEndpoint indisponiveis neste runtime; seguindo para fallback netstat."
                 $netstatOutput = cmd /c "netstat -ano 2>nul"
@@ -1763,13 +1859,21 @@ function Get-NetworkAnalysisComplete {
             }
         }
     }
-    catch {
-        $networkNotices += [PSCustomObject]@{
-            Target  = "Conexoes"
-            Message = $_.Exception.Message
-        }
-        Write-Verbose "Erro ao obter conexoes: $($_.Exception.Message)"
-    }
+            catch {
+                $networkNotices += [PSCustomObject]@{
+                    Target  = "Conexoes"
+                    Message = $_.Exception.Message
+                }
+                Write-Verbose "Erro ao obter conexoes: $($_.Exception.Message)"
+                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    Severity  = "ERRO"
+                    Category  = "Rede"
+                    Target    = "Conexoes"
+                    Computer  = $Computer
+                    Message   = $_.Exception.Message
+                }
+            }
 
     Write-Host "  * Identificando processos com atividade de rede..." -ForegroundColor White
     try {
@@ -1787,13 +1891,21 @@ function Get-NetworkAnalysisComplete {
             }
         }
     }
-    catch {
-        $networkNotices += [PSCustomObject]@{
-            Target  = "Processos de Rede"
-            Message = $_.Exception.Message
-        }
-        Write-Verbose "Erro ao obter processos de rede: $($_.Exception.Message)"
-    }
+            catch {
+                $networkNotices += [PSCustomObject]@{
+                    Target  = "Processos de Rede"
+                    Message = $_.Exception.Message
+                }
+                Write-Verbose "Erro ao obter processos de rede: $($_.Exception.Message)"
+                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    Severity  = "ERRO"
+                    Category  = "Rede"
+                    Target    = "Processos de Rede"
+                    Computer  = $Computer
+                    Message   = $_.Exception.Message
+                }
+            }
 
     Write-Host "  * Analisando atividade incomum..." -ForegroundColor White
     $networkResults.SuspiciousActivity = New-Object 'System.Collections.Generic.List[object]'
@@ -2382,6 +2494,14 @@ function Get-JavaProcessAnalysis {
                             }
                             catch {
                                 Write-Verbose "Falha ao verificar assinatura digital de '$executablePath': $($_.Exception.Message)"
+                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                    Severity  = "ATENCAO"
+                                    Category  = "Java"
+                                    Target    = "Processo $($proc.ProcessName)($($proc.Id))"
+                                    Computer  = $Computer
+                                    Message   = "Falha ao verificar assinatura digital: $($_.Exception.Message)"
+                                }
                             }
                         }
                     }
@@ -2399,12 +2519,28 @@ function Get-JavaProcessAnalysis {
                 }
                 catch {
                     Write-Verbose "Falha ao analisar processo Java '$($proc.ProcessName)' (PID $($proc.Id)): $($_.Exception.Message)"
+                    $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                        Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                        Severity  = "ATENCAO"
+                        Category  = "Java"
+                        Target    = "Processo $($proc.ProcessName)($($proc.Id))"
+                        Computer  = $Computer
+                        Message   = $_.Exception.Message
+                    }
                 }
             }
         }
     }
     catch {
         Write-Warning "Erro ao analisar processos Java: $($_.Exception.Message)"
+        $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+            Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            Severity  = "ERRO"
+            Category  = "Java"
+            Target    = "Processos Java"
+            Computer  = $Computer
+            Message   = $_.Exception.Message
+        }
     }
     
     $procBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
@@ -2766,6 +2902,16 @@ function Get-SecurityConfigurationAnalysis {
                         catch {
                             $netUserOutput = cmd /c "net user 2>nul"
                             $netGroupOutput = cmd /c "net localgroup 2>nul"
+                            if (-not $netUserOutput -and -not $netGroupOutput) {
+                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                    Severity  = "ATENCAO"
+                                    Category  = "Seguranca"
+                                    Target    = "Usuarios e Grupos"
+                                    Computer  = $Computer
+                                    Message   = "Falha no fallback WMI->net user/localgroup para usuarios e grupos locais."
+                                }
+                            }
                             $securityResults.LocalUsers = $netUserOutput
                             $securityResults.LocalGroups = $netGroupOutput
                         }
@@ -2791,6 +2937,16 @@ function Get-SecurityConfigurationAnalysis {
                     catch {
                         $netUserOutput = cmd /c "net user 2>nul"
                         $netGroupOutput = cmd /c "net localgroup 2>nul"
+                        if (-not $netUserOutput -and -not $netGroupOutput) {
+                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                Severity  = "ATENCAO"
+                                Category  = "Seguranca"
+                                Target    = "Usuarios e Grupos"
+                                Computer  = $Computer
+                                Message   = "Falha no fallback WMI local para usuarios e grupos locais."
+                            }
+                        }
                         $securityResults.LocalUsers = $netUserOutput
                         $securityResults.LocalGroups = $netGroupOutput
                     }
@@ -2807,6 +2963,14 @@ function Get-SecurityConfigurationAnalysis {
     }
     catch {
         Write-Warning "Erro ao obter usuarios e grupos: $($_.Exception.Message)"
+        $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+            Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            Severity  = "ERRO"
+            Category  = "Seguranca"
+            Target    = "Usuarios e Grupos"
+            Computer  = $Computer
+            Message   = $_.Exception.Message
+        }
     }
     
     try {
@@ -2817,12 +2981,22 @@ function Get-SecurityConfigurationAnalysis {
                     $securityResults.FirewallRules = Get-NetFirewallRule -Enabled True -ErrorAction Stop | Select-Object -First 100
                     $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetFirewallProfile"
                 }
-                catch {
-                    $netshOutput = cmd /c "netsh advfirewall show allprofiles 2>nul"
-                    $securityResults.FirewallProfiles = $netshOutput
-                    $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "netsh"
+                    catch {
+                        $netshOutput = cmd /c "netsh advfirewall show allprofiles 2>nul"
+                        if (-not $netshOutput) {
+                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                Severity  = "ATENCAO"
+                                Category  = "Seguranca"
+                                Target    = "Firewall"
+                                Computer  = $Computer
+                                Message   = "Falha no fallback netsh para configuracoes de firewall."
+                            }
+                        }
+                        $securityResults.FirewallProfiles = $netshOutput
+                        $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "netsh"
+                    }
                 }
-            }
             else {
                 Write-Verbose "Cmdlets de firewall indisponiveis neste runtime; seguindo para fallback netsh."
                 $netshOutput = cmd /c "netsh advfirewall show allprofiles 2>nul"
@@ -2831,9 +3005,17 @@ function Get-SecurityConfigurationAnalysis {
             }
         }
     }
-    catch {
-        Write-Warning "Erro ao obter configuracoes de firewall: $($_.Exception.Message)"
-    }
+        catch {
+            Write-Warning "Erro ao obter configuracoes de firewall: $($_.Exception.Message)"
+            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                Severity  = "ERRO"
+                Category  = "Seguranca"
+                Target    = "Firewall"
+                Computer  = $Computer
+                Message   = $_.Exception.Message
+            }
+        }
     
     try {
         if ($isLocal) {
@@ -2844,9 +3026,17 @@ function Get-SecurityConfigurationAnalysis {
             }
         }
     }
-    catch {
-        Write-Warning "Erro ao obter politicas de auditoria: $($_.Exception.Message)"
-    }
+        catch {
+            Write-Warning "Erro ao obter politicas de auditoria: $($_.Exception.Message)"
+            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                Severity  = "ERRO"
+                Category  = "Seguranca"
+                Target    = "Politicas de Auditoria"
+                Computer  = $Computer
+                Message   = $_.Exception.Message
+            }
+        }
     
     try {
         if ($isLocal) {
@@ -2863,6 +3053,16 @@ function Get-SecurityConfigurationAnalysis {
                         }
                         catch {
                             $netShareOutput = cmd /c "net share 2>nul"
+                            if (-not $netShareOutput) {
+                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                    Severity  = "ATENCAO"
+                                    Category  = "Seguranca"
+                                    Target    = "Compartilhamentos"
+                                    Computer  = $Computer
+                                    Message   = "Falha no fallback WMI->net share para compartilhamentos locais."
+                                }
+                            }
                             $securityResults.NetworkShares = $netShareOutput
                         }
                     }
@@ -2882,6 +3082,16 @@ function Get-SecurityConfigurationAnalysis {
                     }
                     catch {
                         $netShareOutput = cmd /c "net share 2>nul"
+                        if (-not $netShareOutput) {
+                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                                Severity  = "ATENCAO"
+                                Category  = "Seguranca"
+                                Target    = "Compartilhamentos"
+                                Computer  = $Computer
+                                Message   = "Falha no fallback WMI remoto para compartilhamentos."
+                            }
+                        }
                         $securityResults.NetworkShares = $netShareOutput
                     }
                 }
@@ -2895,6 +3105,14 @@ function Get-SecurityConfigurationAnalysis {
     }
     catch {
         Write-Warning "Erro ao obter compartilhamentos: $($_.Exception.Message)"
+        $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+            Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            Severity  = "ERRO"
+            Category  = "Seguranca"
+            Target    = "Compartilhamentos"
+            Computer  = $Computer
+            Message   = $_.Exception.Message
+        }
     }
     
     try {
@@ -2932,6 +3150,14 @@ function Get-SecurityConfigurationAnalysis {
     }
     catch {
         Write-Warning "Erro ao obter permissoes de diretorios: $($_.Exception.Message)"
+        $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+            Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            Severity  = "ERRO"
+            Category  = "Seguranca"
+            Target    = "Permissoes de Diretorios"
+            Computer  = $Computer
+            Message   = $_.Exception.Message
+        }
     }
     
     $secBasePath = Join-Path -Path $OutputPath -ChildPath $Computer
