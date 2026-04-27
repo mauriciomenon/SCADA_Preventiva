@@ -17,6 +17,9 @@ param(
     [int]$MaxRetries = 3
 )
 
+$Script:CONNECTION_TIMEOUT_MS = if ($ConnectionTimeout -gt 0) { $ConnectionTimeout } else { 3000 }
+$Script:MAX_RETRIES = if ($MaxRetries -gt 0) { $MaxRetries } else { 3 }
+
 # Constantes globais
 $Script:SCRIPT_HEADER = @"
 Baseline_NMR5 10.2 para PIC.EE.0246
@@ -1006,7 +1009,8 @@ function Get-RemoteProgram {
         [Parameter(ValueFromPipeline = $true, Position = 0)]
         [string[]]$ComputerName = $env:COMPUTERNAME,
         [string[]]$Property = @('DisplayVersion', 'Publisher', 'InstallDate', 'InstallLocation'),
-        [int]$TimeoutMs = 10000
+        [int]$TimeoutMs = 10000,
+        [int]$MaxRetries = 3
     )
 
     begin {
@@ -1021,6 +1025,8 @@ function Get-RemoteProgram {
             $Results = @()
             $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
             $softwareNotices = @()
+            $remoteTimeoutMs = if ($TimeoutMs -gt 0) { $TimeoutMs } else { $Script:CONNECTION_TIMEOUT_MS }
+            $remoteRetries = if ($MaxRetries -gt 0) { $MaxRetries } else { 1 }
             
             if ($isLocal) {
                 Write-Verbose "Executando analise de software LOCAL"
@@ -1078,12 +1084,7 @@ function Get-RemoteProgram {
                                 }
                             }
                             
-                            if ($Results.Count -gt 0) {
-                                $Global:WMICResults = $wmicResults
-                            }
-                            else {
-                                $Results = $wmicResults
-                            }
+                            $Results = $wmicResults
                         }
                         Write-Verbose "WMIC local: $(if ($wmicResults) { $wmicResults.Count } else { 0 }) programas encontrados"
                     }
@@ -1096,122 +1097,156 @@ function Get-RemoteProgram {
                     }
                 }
             }
-            else {
-                Write-Verbose "Executando analise de software REMOTA para $Computer"
-                
-                try {
-                    $socket = New-Object Net.Sockets.TcpClient
-                    $socket.ReceiveTimeout = $TimeoutMs
-                    $socket.SendTimeout = $TimeoutMs
+                else {
+                    Write-Verbose "Executando analise de software REMOTA para $Computer"
+
+                    $remoteConnected = $false
+                    $connectAttempt = 0
                     
-                    if ($socket.ConnectAsync($Computer, 445).Wait($TimeoutMs)) {
-                        $RegBase = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $Computer)
-                        
-                        foreach ($CurrentReg in $RegistryLocation) {
-                            $CurrentRegKey = $null
+                    try {
+                        while (-not $remoteConnected -and $connectAttempt -lt $remoteRetries) {
+                            $connectAttempt++
+                            $socket = $null
+
                             try {
-                                $CurrentRegKey = $RegBase.OpenSubKey($CurrentReg)
-                                if ($CurrentRegKey) {
-                                    $CurrentRegKey.GetSubKeyNames() | ForEach-Object {
-                                        $SubKey = $null
-                                        try {
-                                            $SubKey = $RegBase.OpenSubKey("$CurrentReg$_")
-                                            $DisplayName = $SubKey.GetValue('DisplayName')
-                                            
-                                            if ($DisplayName) {
-                                                $HashProperty = [ordered]@{
-                                                    ComputerName = $Computer
-                                                    ProgramName  = $DisplayName
-                                                    Method       = "Registry"
-                                                }
-                                                
-                                                foreach ($Prop in $Property) {
-                                                    $HashProperty[$Prop] = $SubKey.GetValue($Prop)
-                                                }
-                                                
-                                                $Results += [PSCustomObject]$HashProperty
-                                            }
-                                        }
-                                        finally {
-                                            if ($SubKey) {
-                                                try { $SubKey.Close() }
-                                                catch {
-                                                    Write-Verbose "Falha ao fechar subchave de registry remoto em '$Computer': $($_.Exception.Message)"
-                                                }
-                                            }
-                                        }
-                                    }
+                                $socket = New-Object Net.Sockets.TcpClient
+                                $socket.ReceiveTimeout = $remoteTimeoutMs
+                                $socket.SendTimeout = $remoteTimeoutMs
+
+                                if ($socket.ConnectAsync($Computer, 445).Wait($remoteTimeoutMs)) {
+                                    $remoteConnected = $true
                                 }
+                            }
+                            catch {
+                                Write-Verbose "Tentativa de conectividade $connectAttempt/$remoteRetries falhou para $($Computer): $($_.Exception.Message)"
                             }
                             finally {
-                                if ($CurrentRegKey) {
-                                    try { $CurrentRegKey.Close() }
+                                if ($socket) {
+                                    try {
+                                        $socket.Close()
+                                        $socket.Dispose()
+                                    }
                                     catch {
-                                        Write-Verbose "Falha ao fechar chave de registry remoto em '$Computer': $($_.Exception.Message)"
+                                        Write-Verbose "Falha ao fechar socket para $($Computer): $($_.Exception.Message)"
                                     }
                                 }
                             }
+
+                            if (-not $remoteConnected -and $connectAttempt -lt $remoteRetries) {
+                                Start-Sleep -Milliseconds 250
+                            }
                         }
-                        $RegBase.Close()
-                    }
-                    $socket.Close()
-                    Write-Verbose "Registry remoto: $($Results.Count) programas encontrados"
-                }
-                catch {
-                    $softwareNotices += [PSCustomObject]@{
-                        Target  = "Registry Remoto"
-                        Message = $_.Exception.Message
-                    }
-                    Write-Verbose "Registry remoto falhou: $($_.Exception.Message)"
-                }
-                
-                if ($Results.Count -eq 0) {
-                    try {
-                        Write-Verbose "Tentando WMIC remoto como fallback..."
-                        $wmicOutput = cmd /c "wmic /node:$Computer product get Name,Version,Vendor,InstallDate /format:csv 2>nul"
-                        if ($wmicOutput -and $wmicOutput.Count -gt 2) {
-                            $wmicOutput | Select-Object -Skip 1 | Where-Object { $_ -and $_ -notmatch "^Node" } | ForEach-Object {
-                                $fields = $_ -split ','
-                                if ($fields.Count -ge 4 -and $fields[2]) {
-                                    $Results += [PSCustomObject]@{
-                                        ComputerName    = $Computer
-                                        ProgramName     = $fields[2].Trim()
-                                        DisplayVersion  = if ($fields[4]) { $fields[4].Trim() } else { "" }
-                                        Publisher       = if ($fields[3]) { $fields[3].Trim() } else { "" }
-                                        InstallDate     = if ($fields[1]) { $fields[1].Trim() } else { "" }
-                                        InstallLocation = ""
-                                        Method          = "WMIC"
+
+                        if ($remoteConnected) {
+                            $RegBase = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $Computer)
+                            foreach ($CurrentReg in $RegistryLocation) {
+                                $CurrentRegKey = $null
+                                try {
+                                    $CurrentRegKey = $RegBase.OpenSubKey($CurrentReg)
+                                    if ($CurrentRegKey) {
+                                        $CurrentRegKey.GetSubKeyNames() | ForEach-Object {
+                                            $SubKey = $null
+                                            try {
+                                                $SubKey = $RegBase.OpenSubKey("$CurrentReg$_")
+                                                $DisplayName = $SubKey.GetValue('DisplayName')
+                                                
+                                                if ($DisplayName) {
+                                                    $HashProperty = [ordered]@{
+                                                        ComputerName = $Computer
+                                                        ProgramName  = $DisplayName
+                                                        Method       = "Registry"
+                                                    }
+                                                    
+                                                    foreach ($Prop in $Property) {
+                                                        $HashProperty[$Prop] = $SubKey.GetValue($Prop)
+                                                    }
+                                                    
+                                                    $Results += [PSCustomObject]$HashProperty
+                                                }
+                                            }
+                                            finally {
+                                                if ($SubKey) {
+                                                    try { $SubKey.Close() }
+                                                    catch {
+                                                        Write-Verbose "Falha ao fechar subchave de registry remoto em '$Computer': $($_.Exception.Message)"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                finally {
+                                    if ($CurrentRegKey) {
+                                        try { $CurrentRegKey.Close() }
+                                        catch {
+                                            Write-Verbose "Falha ao fechar chave de registry remoto em '$Computer': $($_.Exception.Message)"
+                                        }
                                     }
                                 }
                             }
+                            $RegBase.Close()
                         }
-                        Write-Verbose "WMIC remoto: $($Results.Count) programas encontrados"
+                        else {
+                            Write-Verbose "Conexao remota com $Computer nao estabelecida apos $remoteRetries tentativas; usando fallback WMIC."
+                        }
+
+                        Write-Verbose "Registry remoto: $($Results.Count) programas encontrados"
                     }
                     catch {
                         $softwareNotices += [PSCustomObject]@{
-                            Target  = "WMIC Remoto"
+                            Target  = "Registry Remoto"
                             Message = $_.Exception.Message
                         }
-                        Write-Verbose "WMIC remoto falhou: $($_.Exception.Message)"
+                        Write-Verbose "Registry remoto falhou: $($_.Exception.Message)"
+                    }
+                    
+                    if ($Results.Count -eq 0) {
+                        try {
+                            Write-Verbose "Tentando WMIC remoto como fallback..."
+                            $wmicOutput = cmd /c "wmic /node:$Computer product get Name,Version,Vendor,InstallDate /format:csv 2>nul"
+                            if ($wmicOutput -and $wmicOutput.Count -gt 2) {
+                                $wmicOutput | Select-Object -Skip 1 | Where-Object { $_ -and $_ -notmatch "^Node" } | ForEach-Object {
+                                    $fields = $_ -split ','
+                                    if ($fields.Count -ge 4 -and $fields[2]) {
+                                        $Results += [PSCustomObject]@{
+                                            ComputerName    = $Computer
+                                            ProgramName     = $fields[2].Trim()
+                                            DisplayVersion  = if ($fields[4]) { $fields[4].Trim() } else { "" }
+                                            Publisher       = if ($fields[3]) { $fields[3].Trim() } else { "" }
+                                            InstallDate     = if ($fields[1]) { $fields[1].Trim() } else { "" }
+                                            InstallLocation = ""
+                                            Method          = "WMIC"
+                                        }
+                                    }
+                                }
+                            }
+                            Write-Verbose "WMIC remoto: $($Results.Count) programas encontrados"
+                        }
+                        catch {
+                            $softwareNotices += [PSCustomObject]@{
+                                Target  = "WMIC Remoto"
+                                Message = $_.Exception.Message
+                            }
+                            Write-Verbose "WMIC remoto falhou: $($_.Exception.Message)"
+                        }
                     }
                 }
-            }
 
-            foreach ($notice in $softwareNotices) {
-                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                    Severity  = "ATENCAO"
-                    Category  = "Software"
-                    Target    = $notice.Target
-                    Computer  = $Computer
-                    Message   = $notice.Message
+                foreach ($notice in $softwareNotices) {
+                    $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                        Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                        Severity  = "ATENCAO"
+                        Category  = "Software"
+                        Target    = $notice.Target
+                        Computer  = $Computer
+                        Message   = $notice.Message
+                    }
                 }
+                
+                return $Results
             }
-            
-            return $Results
         }
     }
-}
 
 # Funcao para obter informacoes do sistema com fallbacks
 function Get-SystemInformationComplete {
@@ -1405,6 +1440,8 @@ function Save-ReportWithMethods {
         [string]$PrimaryMethod = "CIM",
         [hashtable]$AlternativeData = @{}
     )
+
+    Write-Verbose "Gerando relatorio $FileName com metodo primario $PrimaryMethod"
     
     if ($Data) {
         $Data | Export-Csv -Path (Join-Path $BasePath "${FileName}.csv") -NoTypeInformation -Encoding UTF8
@@ -2458,28 +2495,28 @@ function Get-EventLogAnalysis {
                     Write-Verbose "Get-WinEvent indisponivel neste runtime; coleta do log $logName pulada."
                 }
                 
-                foreach ($event in $events) {
-                    $translatedDescription = if ($Script:EVENT_TRANSLATION.ContainsKey($event.Id.ToString())) {
-                        $Script:EVENT_TRANSLATION[$event.Id.ToString()]
+                foreach ($winEvent in $events) {
+                    $translatedDescription = if ($Script:EVENT_TRANSLATION.ContainsKey($winEvent.Id.ToString())) {
+                        $Script:EVENT_TRANSLATION[$winEvent.Id.ToString()]
                     }
                     else {
-                        $event.LevelDisplayName + " - " + $event.TaskDisplayName
+                        $winEvent.LevelDisplayName + " - " + $winEvent.TaskDisplayName
                     }
-                    
+
                     $eventAnalysis += [PSCustomObject]@{
                         LogName               = $logName
-                        TimeCreated           = $event.TimeCreated
-                        Id                    = $event.Id
-                        Level                 = $event.LevelDisplayName
-                        Source                = $event.ProviderName
-                        TaskCategory          = $event.TaskDisplayName
-                        Description           = $event.Message
+                        TimeCreated           = $winEvent.TimeCreated
+                        Id                    = $winEvent.Id
+                        Level                 = $winEvent.LevelDisplayName
+                        Source                = $winEvent.ProviderName
+                        TaskCategory          = $winEvent.TaskDisplayName
+                        Description           = $winEvent.Message
                         TranslatedDescription = $translatedDescription
                         Computer              = $Computer
-                        UserId                = $event.UserId
-                        ProcessId             = $event.ProcessId
-                        ThreadId              = $event.ThreadId
-                        Severity              = switch ($event.LevelDisplayName) {
+                        UserId                = $winEvent.UserId
+                        ProcessId             = $winEvent.ProcessId
+                        ThreadId              = $winEvent.ThreadId
+                        Severity              = switch ($winEvent.LevelDisplayName) {
                             "Critical" { "CRITICO" }
                             "Error" { "ERRO" }
                             "Warning" { "AVISO" }
@@ -2524,11 +2561,11 @@ Eventos Criticos (ultimas 24 horas):
         
         $criticalEvents = $eventAnalysis | Where-Object { $_.Level -eq "Critical" -and $_.TimeCreated -gt (Get-Date).AddDays(-1) } | Sort-Object TimeCreated -Descending | Select-Object -First 20
         if ($criticalEvents.Count -gt 0) {
-            foreach ($event in $criticalEvents) {
-                $logReport += "`n$($event.Severity) ID: $($event.Id) - $($event.TimeCreated.ToString('dd/MM/yyyy HH:mm:ss'))`n"
-                $logReport += "Fonte: $($event.Source)`n"
-                $logReport += "Traducao: $($event.TranslatedDescription)`n"
-                $logReport += "Descricao: $($event.Description -replace "`r`n", " " -replace "`n", " ")`n`n"
+            foreach ($criticalEvent in $criticalEvents) {
+                $logReport += "`n$($criticalEvent.Severity) ID: $($criticalEvent.Id) - $($criticalEvent.TimeCreated.ToString('dd/MM/yyyy HH:mm:ss'))`n"
+                $logReport += "Fonte: $($criticalEvent.Source)`n"
+                $logReport += "Traducao: $($criticalEvent.TranslatedDescription)`n"
+                $logReport += "Descricao: $($criticalEvent.Description -replace "`r`n", " " -replace "`n", " ")`n`n"
             }
         }
         else {
@@ -2641,10 +2678,10 @@ Eventos ordenados cronologicamente (mais recentes primeiro):
 "@
     
     $sortedEvents = $EventAnalysis | Sort-Object TimeCreated -Descending
-    foreach ($event in $sortedEvents) {
-        $timelineReport += "[$($event.TimeCreated.ToString('dd/MM/yyyy HH:mm:ss'))] $($event.Severity) - ID:$($event.Id)`n"
-        $timelineReport += "Fonte: $($event.Source) | Categoria: $($event.LogName)`n"
-        $timelineReport += "Descricao: $($event.TranslatedDescription)`n`n"
+    foreach ($timelineEvent in $sortedEvents) {
+        $timelineReport += "[$($timelineEvent.TimeCreated.ToString('dd/MM/yyyy HH:mm:ss'))] $($timelineEvent.Severity) - ID:$($timelineEvent.Id)`n"
+        $timelineReport += "Fonte: $($timelineEvent.Source) | Categoria: $($timelineEvent.LogName)`n"
+        $timelineReport += "Descricao: $($timelineEvent.TranslatedDescription)`n`n"
     }
     
     $timelineReport | Out-File -FilePath (Join-Path $eventPath "${Timestamp}_Timeline_Eventos.txt") -Encoding UTF8
@@ -2668,8 +2705,8 @@ Sistema: $Computer
                 $criticalEvents = $categoryEvents | Where-Object { $_.Severity -eq $criticality } | Sort-Object TimeCreated -Descending
                 if ($criticalEvents.Count -gt 0) {
                     $familyReport += "--- $criticality ($($criticalEvents.Count) eventos) ---`n`n"
-                    foreach ($event in $criticalEvents) {
-                        $familyReport += "[$($event.TimeCreated.ToString('dd/MM/yyyy HH:mm:ss'))] ID:$($event.Id) - $($event.TranslatedDescription)`n"
+                    foreach ($familyEvent in $criticalEvents) {
+                        $familyReport += "[$($familyEvent.TimeCreated.ToString('dd/MM/yyyy HH:mm:ss'))] ID:$($familyEvent.Id) - $($familyEvent.TranslatedDescription)`n"
                     }
                     $familyReport += "`n"
                 }
@@ -3340,6 +3377,15 @@ function New-ConsolidatedReportComplete {
             "INFO"    = 3
         }
         $sortedNotices = $collectionNotices | Sort-Object @{ Expression = { if ($severityOrder.ContainsKey($_.Severity)) { $severityOrder[$_.Severity] } else { 99 } } }, Category, Target, Timestamp
+        $securityCounts = @{
+            LocalUsers             = if ($SecurityResults.LocalUsers) { @($SecurityResults.LocalUsers).Count } else { 0 }
+            LocalGroups            = if ($SecurityResults.LocalGroups) { @($SecurityResults.LocalGroups).Count } else { 0 }
+            FirewallProfiles       = if ($SecurityResults.FirewallProfiles) { @($SecurityResults.FirewallProfiles).Count } else { 0 }
+            FirewallRules          = if ($SecurityResults.FirewallRules) { @($SecurityResults.FirewallRules).Count } else { 0 }
+            AuditPolicies          = if ($SecurityResults.AuditPolicies) { @($SecurityResults.AuditPolicies).Count } else { 0 }
+            NetworkShares          = if ($SecurityResults.NetworkShares) { @($SecurityResults.NetworkShares).Count } else { 0 }
+            DirectoryPermissions   = if ($SecurityResults.DirectoryPermissions) { @($SecurityResults.DirectoryPermissions).Count } else { 0 }
+        }
 
         $auditDuration = if ($Global:AuditStartTime) { ((Get-Date) - $Global:AuditStartTime).ToString('hh\:mm\:ss') } else { "Nao disponivel" }
 
@@ -3429,6 +3475,8 @@ Metodo: $($disk.Method)
  Analise de Seguranca:
 ================================================================================
 "@
+        $consolidatedReport += "• Coleta de seguranca: UsuariosLocais($($securityCounts.LocalUsers)) GruposLocais($($securityCounts.LocalGroups)) FirewallProfiles($($securityCounts.FirewallProfiles)) Rules($($securityCounts.FirewallRules))`n"
+        $consolidatedReport += "• Coleta de seguranca: Shares($($securityCounts.NetworkShares)) Permissoes($($securityCounts.DirectoryPermissions))`n"
 
         if ($suspiciousJava -gt 0) {
             $consolidatedReport += "ALERTA: $suspiciousJava processos Java suspeitos detectados - Requerem verificacao manual`n"
@@ -3458,8 +3506,8 @@ Metodo: $($disk.Method)
             $recentCritical = $EventAnalysis | Where-Object { $_.Level -eq "Critical" -and $_.TimeCreated -gt (Get-Date).AddDays(-7) } | 
                 Sort-Object TimeCreated -Descending | Select-Object -First 5
             
-            foreach ($event in $recentCritical) {
-                $consolidatedReport += "$($event.TimeCreated.ToString('dd/MM/yyyy HH:mm')) - ID:$($event.Id) - $($event.TranslatedDescription)`n"
+            foreach ($recentCriticalEvent in $recentCritical) {
+                $consolidatedReport += "$($recentCriticalEvent.TimeCreated.ToString('dd/MM/yyyy HH:mm')) - ID:$($recentCriticalEvent.Id) - $($recentCriticalEvent.TranslatedDescription)`n"
             }
         }
         else {
@@ -3615,6 +3663,7 @@ Atualizacoes: $(if ($UpdatesInfo.Method) { $UpdatesInfo.Method } else { "Nao col
                 SuspiciousJava     = $suspiciousJava
                 SuspiciousNetwork  = $suspiciousNetwork
             }
+            SecuritySummary = $securityCounts
             Recommendations = $recommendations
             CollectionNotices = $sortedNotices
             Status          = if ($recommendations.Count -eq 0) { "OK" } elseif ($recommendations -match "URGENTE") { "CRITICO" } else { "ATENCAO" }
