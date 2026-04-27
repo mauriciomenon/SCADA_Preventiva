@@ -3377,14 +3377,16 @@ function New-ConsolidatedReportComplete {
             "INFO"    = 3
         }
         $sortedNotices = $collectionNotices | Sort-Object @{ Expression = { if ($severityOrder.ContainsKey($_.Severity)) { $severityOrder[$_.Severity] } else { 99 } } }, Category, Target, Timestamp
+        $securityResultsSafe = if ($SecurityResults) { $SecurityResults } else { @{} }
+
         $securityCounts = @{
-            LocalUsers             = if ($SecurityResults.LocalUsers) { @($SecurityResults.LocalUsers).Count } else { 0 }
-            LocalGroups            = if ($SecurityResults.LocalGroups) { @($SecurityResults.LocalGroups).Count } else { 0 }
-            FirewallProfiles       = if ($SecurityResults.FirewallProfiles) { @($SecurityResults.FirewallProfiles).Count } else { 0 }
-            FirewallRules          = if ($SecurityResults.FirewallRules) { @($SecurityResults.FirewallRules).Count } else { 0 }
-            AuditPolicies          = if ($SecurityResults.AuditPolicies) { @($SecurityResults.AuditPolicies).Count } else { 0 }
-            NetworkShares          = if ($SecurityResults.NetworkShares) { @($SecurityResults.NetworkShares).Count } else { 0 }
-            DirectoryPermissions   = if ($SecurityResults.DirectoryPermissions) { @($SecurityResults.DirectoryPermissions).Count } else { 0 }
+            LocalUsers             = if ($securityResultsSafe.LocalUsers) { @($securityResultsSafe.LocalUsers).Count } else { 0 }
+            LocalGroups            = if ($securityResultsSafe.LocalGroups) { @($securityResultsSafe.LocalGroups).Count } else { 0 }
+            FirewallProfiles       = if ($securityResultsSafe.FirewallProfiles) { @($securityResultsSafe.FirewallProfiles).Count } else { 0 }
+            FirewallRules          = if ($securityResultsSafe.FirewallRules) { @($securityResultsSafe.FirewallRules).Count } else { 0 }
+            AuditPolicies          = if ($securityResultsSafe.AuditPolicies) { @($securityResultsSafe.AuditPolicies).Count } else { 0 }
+            NetworkShares          = if ($securityResultsSafe.NetworkShares) { @($securityResultsSafe.NetworkShares).Count } else { 0 }
+            DirectoryPermissions   = if ($securityResultsSafe.DirectoryPermissions) { @($securityResultsSafe.DirectoryPermissions).Count } else { 0 }
         }
 
         $auditDuration = if ($Global:AuditStartTime) { ((Get-Date) - $Global:AuditStartTime).ToString('hh\:mm\:ss') } else { "Nao disponivel" }
@@ -3864,7 +3866,40 @@ function Start-SystemAudit {
     Write-Host "  • Navegacao HTML: $htmlPage" -ForegroundColor Gray
     $finalJsonPath = Join-Path -Path (Join-Path -Path $finalReportBasePath -ChildPath '14_Relatorio') -ChildPath "Relatorio_Final_$Computer.json"
     Write-Host "  • Dados JSON: $finalJsonPath" -ForegroundColor Gray
-    if ($finalReport -and $finalReport.NoticeCount -gt 0 -and $finalReport.NoticeLogPath) {
+
+    $severityOrder = @{
+        "CRITICO" = 0
+        "ERRO"    = 1
+        "ATENCAO" = 2
+        "INFO"    = 3
+    }
+    $orderedNotices = @($Script:NON_BLOCKING_NOTICES) | Sort-Object @{
+        Expression = {
+            if ($severityOrder.ContainsKey($_.Severity)) { $severityOrder[$_.Severity] } else { 99 }
+        }
+    }, Timestamp
+    if ($orderedNotices.Count -gt 0) {
+        $noticeLogPath = Join-Path -Path (Join-Path -Path $finalReportBasePath -ChildPath '14_Relatorio') -ChildPath "${timestamp}_Avisos_Nao_Bloqueantes_Ordenados.txt"
+        $noticeText = @()
+        $noticeText += "Avisos de Coleta - Ordenados por relevancia"
+        $noticeText += "Data/Hora de Geracao: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        $noticeText += "Total de avisos: $($orderedNotices.Count)"
+        $noticeText += ""
+
+        foreach ($notice in $orderedNotices) {
+            $noticeText += "[ $($notice.Timestamp) ] [$($notice.Severity)] $($notice.Category) | $($notice.Target) | $($notice.Message)"
+        }
+        $noticeText | Out-File -FilePath $noticeLogPath -Encoding UTF8
+
+        Write-Host "  • Avisos de Coleta organizados por relevancia: $($orderedNotices.Count) item(ns)" -ForegroundColor Yellow
+        Write-Host "    log: $noticeLogPath" -ForegroundColor DarkGray
+
+        $criticalNotices = ($orderedNotices | Where-Object { $_.Severity -eq "CRITICO" }).Count
+        $errorNotices = ($orderedNotices | Where-Object { $_.Severity -eq "ERRO" }).Count
+        $attentionNotices = ($orderedNotices | Where-Object { $_.Severity -eq "ATENCAO" }).Count
+        Write-Host "    resumo: CRITICO=$criticalNotices ERRO=$errorNotices ATENCAO=$attentionNotices" -ForegroundColor DarkGray
+    }
+    elseif ($finalReport -and $finalReport.NoticeCount -gt 0 -and $finalReport.NoticeLogPath) {
         Write-Host "  • Avisos de Coleta: $($finalReport.NoticeCount) item(ns) em $($finalReport.NoticeLogPath)" -ForegroundColor Yellow
     }
     
