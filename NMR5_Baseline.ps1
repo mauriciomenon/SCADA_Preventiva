@@ -1535,13 +1535,9 @@ function Get-NetworkAnalysisComplete {
                                 $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
                             }
                             else {
-                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                                    Severity  = "ATENCAO"
-                                    Category  = "Rede"
-                                    Target    = "Adaptadores"
-                                    Computer  = $Computer
-                                    Message   = "WMIC local indisponivel para fallback de adaptadores: $($_.Exception.Message)"
+                                $networkNotices += [PSCustomObject]@{
+                                    Target  = "Adaptadores"
+                                    Message = "WMIC local indisponivel para fallback de adaptadores: $($_.Exception.Message)"
                                 }
                             }
                         }
@@ -1570,13 +1566,9 @@ function Get-NetworkAnalysisComplete {
                             $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC"
                         }
                         else {
-                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                                Severity  = "ATENCAO"
-                                Category  = "Rede"
-                                Target    = "Adaptadores"
-                                Computer  = $Computer
-                                Message   = "WMIC local indisponivel para fallback secundario de adaptadores."
+                            $networkNotices += [PSCustomObject]@{
+                                Target  = "Adaptadores"
+                                Message = "WMIC local indisponivel para fallback secundario de adaptadores."
                             }
                         }
                     }
@@ -1600,22 +1592,18 @@ function Get-NetworkAnalysisComplete {
                     }
                         catch {
                             $wmicNet = cmd /c "wmic /node:$Computer path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
-                            if ($wmicNet) {
-                                $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
-                                $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC-Remote"
-                            }
-                            else {
-                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                                    Severity  = "ATENCAO"
-                                    Category  = "Rede"
-                                    Target    = "Adaptadores"
-                                    Computer  = $Computer
-                                    Message   = "WMIC remoto indisponivel para fallback de adaptadores."
-                                }
+                        if ($wmicNet) {
+                            $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
+                            $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMIC-Remote"
+                        }
+                        else {
+                            $networkNotices += [PSCustomObject]@{
+                                Target  = "Adaptadores"
+                                Message = "WMIC remoto indisponivel para fallback de adaptadores."
                             }
                         }
                     }
+                }
                     else {
                     Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de adaptadores."
                     $wmicNet = cmd /c "wmic /node:$Computer path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
@@ -1634,10 +1622,6 @@ function Get-NetworkAnalysisComplete {
                 }
             }
             catch {
-                $networkNotices += [PSCustomObject]@{
-                    Target  = "Adaptadores"
-                    Message = $_.Exception.Message
-                }
                 Write-Verbose "Erro ao obter adaptadores de rede: $($_.Exception.Message)"
                 $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
                     Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -1661,13 +1645,9 @@ function Get-NetworkAnalysisComplete {
                 }
                 catch {
                     Write-Verbose "Teaming nao disponivel ou nao configurado"
-                    $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                        Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                        Severity  = "ATENCAO"
-                        Category  = "Rede"
-                        Target    = "Teaming"
-                        Computer  = $Computer
-                        Message   = "Falha na verificacao de teaming local nesta coletoria."
+                    $networkNotices += [PSCustomObject]@{
+                        Target  = "Teaming"
+                        Message = "Falha na verificacao de teaming local nesta coletoria."
                     }
                     $networkResults.Teams = @()
                     $networkResults.TeamMembers = @()
@@ -1688,10 +1668,6 @@ function Get-NetworkAnalysisComplete {
         }
     }
             catch {
-                $networkNotices += [PSCustomObject]@{
-                    Target  = "Teaming"
-                    Message = $_.Exception.Message
-                }
                 Write-Verbose "Erro ao verificar teaming: $($_.Exception.Message)"
                 $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
                     Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -1721,16 +1697,11 @@ function Get-NetworkAnalysisComplete {
                             $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
                             if ($ipconfigOutput) {
                                 $networkResults.IPConfig = $ipconfigOutput
-                                $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
                             }
                             else {
-                                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                                    Severity  = "ATENCAO"
-                                    Category  = "Rede"
-                                    Target    = "Configuracao IP"
-                                    Computer  = $Computer
-                                    Message   = "Fallback ipconfig local falhou para coletar IPConfig."
+                                $networkNotices += [PSCustomObject]@{
+                                    Target  = "Configuracao IP"
+                                    Message = "Fallback ipconfig local falhou para coletar IPConfig."
                                 }
                             }
                         }
@@ -1739,7 +1710,6 @@ function Get-NetworkAnalysisComplete {
                         Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback ipconfig na coleta de IP."
                         $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
                         $networkResults.IPConfig = $ipconfigOutput
-                        $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
                     }
                 }
             }
@@ -1754,16 +1724,11 @@ function Get-NetworkAnalysisComplete {
                         $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
                         if ($ipconfigOutput) {
                             $networkResults.IPConfig = $ipconfigOutput
-                            $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
                         }
                         else {
-                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                                Severity  = "ATENCAO"
-                                Category  = "Rede"
-                                Target    = "Configuracao IP"
-                                Computer  = $Computer
-                                Message   = "Fallback ipconfig remoto/local falhou para coletar IPConfig."
+                            $networkNotices += [PSCustomObject]@{
+                                Target  = "Configuracao IP"
+                                Message = "Fallback ipconfig remoto/local falhou para coletar IPConfig."
                             }
                         }
                     }
@@ -1772,7 +1737,6 @@ function Get-NetworkAnalysisComplete {
                     Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback ipconfig na coleta de IP."
                     $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
                     $networkResults.IPConfig = $ipconfigOutput
-                    $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "ipconfig"
                 }
             }
         }
@@ -1800,10 +1764,6 @@ function Get-NetworkAnalysisComplete {
         }
     }
             catch {
-                $networkNotices += [PSCustomObject]@{
-                    Target  = "Configuracao IP"
-                    Message = $_.Exception.Message
-                }
                 Write-Verbose "Erro ao obter configuracoes IP: $($_.Exception.Message)"
                 $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
                     Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -1827,28 +1787,22 @@ function Get-NetworkAnalysisComplete {
                 }
                     catch {
                         $netstatOutput = cmd /c "netstat -ano 2>nul"
-                        if ($netstatOutput) {
-                            $networkResults.Connections = $netstatOutput | Where-Object { $_ -match "TCP|UDP" }
-                            $networkResults.Connections | Add-Member -NotePropertyName "Method" -NotePropertyValue "netstat"
-                        }
-                        else {
-                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                                Severity  = "ATENCAO"
-                                Category  = "Rede"
-                                Target    = "Conexoes"
-                                Computer  = $Computer
-                                Message   = "Fallback netstat falhou para conexoes ativas."
-                            }
+                    if ($netstatOutput) {
+                        $networkResults.Connections = $netstatOutput | Where-Object { $_ -match "TCP|UDP" }
+                    }
+                    else {
+                        $networkNotices += [PSCustomObject]@{
+                            Target  = "Conexoes"
+                            Message = "Fallback netstat falhou para conexoes ativas."
                         }
                     }
                 }
+            }
             else {
                 Write-Verbose "Cmdlets Get-NetTCPConnection/Get-NetUDPEndpoint indisponiveis neste runtime; seguindo para fallback netstat."
                 $netstatOutput = cmd /c "netstat -ano 2>nul"
                 if ($netstatOutput) {
                     $networkResults.Connections = $netstatOutput | Where-Object { $_ -match "TCP|UDP" }
-                    $networkResults.Connections | Add-Member -NotePropertyName "Method" -NotePropertyValue "netstat"
                 }
             }
         }
@@ -1860,10 +1814,6 @@ function Get-NetworkAnalysisComplete {
         }
     }
             catch {
-                $networkNotices += [PSCustomObject]@{
-                    Target  = "Conexoes"
-                    Message = $_.Exception.Message
-                }
                 Write-Verbose "Erro ao obter conexoes: $($_.Exception.Message)"
                 $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
                     Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -1881,7 +1831,6 @@ function Get-NetworkAnalysisComplete {
             $netstatWithPID = cmd /c "netstat -anob 2>nul"
             if ($netstatWithPID) {
                 $networkResults.ProcessConnections = $netstatWithPID
-                $networkResults.ProcessConnections | Add-Member -NotePropertyName "Method" -NotePropertyValue "netstat -anob"
             }
         }
         else {
@@ -1892,20 +1841,16 @@ function Get-NetworkAnalysisComplete {
         }
     }
             catch {
-                $networkNotices += [PSCustomObject]@{
-                    Target  = "Processos de Rede"
-                    Message = $_.Exception.Message
-                }
-                Write-Verbose "Erro ao obter processos de rede: $($_.Exception.Message)"
-                $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
-                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                    Severity  = "ERRO"
-                    Category  = "Rede"
-                    Target    = "Processos de Rede"
-                    Computer  = $Computer
-                    Message   = $_.Exception.Message
-                }
+            Write-Verbose "Erro ao obter processos de rede: $($_.Exception.Message)"
+            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                Severity  = "ERRO"
+                Category  = "Rede"
+                Target    = "Processos de Rede"
+                Computer  = $Computer
+                Message   = $_.Exception.Message
             }
+        }
 
     Write-Host "  * Analisando atividade incomum..." -ForegroundColor White
     $networkResults.SuspiciousActivity = New-Object 'System.Collections.Generic.List[object]'
@@ -2982,26 +2927,24 @@ function Get-SecurityConfigurationAnalysis {
                     $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-NetFirewallProfile"
                 }
                     catch {
-                        $netshOutput = cmd /c "netsh advfirewall show allprofiles 2>nul"
-                        if (-not $netshOutput) {
-                            $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
+                    $netshOutput = cmd /c "netsh advfirewall show allprofiles 2>nul"
+                    if (-not $netshOutput) {
+                        $Script:NON_BLOCKING_NOTICES += [PSCustomObject]@{
                                 Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
                                 Severity  = "ATENCAO"
                                 Category  = "Seguranca"
                                 Target    = "Firewall"
                                 Computer  = $Computer
-                                Message   = "Falha no fallback netsh para configuracoes de firewall."
-                            }
+                            Message   = "Falha no fallback netsh para configuracoes de firewall."
                         }
-                        $securityResults.FirewallProfiles = $netshOutput
-                        $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "netsh"
                     }
+                    $securityResults.FirewallProfiles = $netshOutput
                 }
+            }
             else {
                 Write-Verbose "Cmdlets de firewall indisponiveis neste runtime; seguindo para fallback netsh."
                 $netshOutput = cmd /c "netsh advfirewall show allprofiles 2>nul"
                 $securityResults.FirewallProfiles = $netshOutput
-                $securityResults.FirewallProfiles | Add-Member -NotePropertyName "Method" -NotePropertyValue "netsh"
             }
         }
     }
@@ -3022,7 +2965,6 @@ function Get-SecurityConfigurationAnalysis {
             $auditpolOutput = cmd /c "auditpol /get /category:* 2>nul"
             if ($auditpolOutput) {
                 $securityResults.AuditPolicies = $auditpolOutput
-                $securityResults.AuditPolicies | Add-Member -NotePropertyName "Method" -NotePropertyValue "auditpol"
             }
         }
     }
