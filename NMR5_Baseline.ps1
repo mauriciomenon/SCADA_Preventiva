@@ -17,6 +17,18 @@ param(
     [int]$MaxRetries = 3
 )
 
+$Script:IS_WINDOWS_RUNTIME = if ($PSVersionTable.PSVersion.Major -lt 6) {
+    $env:OS -eq 'Windows_NT'
+}
+else {
+    if ($PSVersionTable.PSVersion.Major -ge 6 -and $PSVersionTable.PSEdition -eq 'Core') {
+        [bool]$IsWindows
+    }
+    else {
+        $true
+    }
+}
+
 $Script:CONNECTION_TIMEOUT_MS = if ($ConnectionTimeout -gt 0) { $ConnectionTimeout } else { 3000 }
 $Script:MAX_RETRIES = if ($MaxRetries -gt 0) { $MaxRetries } else { 3 }
 
@@ -4220,6 +4232,11 @@ function Invoke-SystemAudit {
 
 # Execucao direta se chamado como script
 if ($MyInvocation.InvocationName -ne '.' -and $MyInvocation.Line -notmatch '^\s*\.' -and $MyInvocation.InvocationName -ne 'Export-ModuleMember') {
+    if (-not $Script:IS_WINDOWS_RUNTIME) {
+        Write-Warning "Execucao direta nao suportada neste runtime nao-Windows. Use dot-sourcing para validar carga de funcoes no Mac/Debian."
+        Write-Host "Runtime atual: $($PSVersionTable.PSVersion) $($PSVersionTable.PSEdition)" -ForegroundColor Cyan
+        return
+    }
     # Executar a auditoria diretamente
     Write-Host "Executando auditoria diretamente..." -ForegroundColor Cyan
     Invoke-SystemAudit -Environment $Environment -TargetComputer $TargetComputer -OutputBasePath $OutputBasePath -ParallelExecution:$ParallelExecution -MaxParallelJobs $MaxParallelJobs
