@@ -173,13 +173,13 @@ function Get-OSVersion {
         $osVersion = (Get-CimInstance -ClassName CIM_OperatingSystem -ErrorAction Stop).Version
     }
     catch {
-        $wmiCommand = Get-Command -Name Get-WmiObject -ErrorAction SilentlyContinue
-        if ($null -eq $wmiCommand) {
-            Write-Verbose "Get-WmiObject nao esta disponivel no runtime atual para fallback de versao do SO."
+        $cimCommand = Get-Command -Name Get-CimInstance -ErrorAction SilentlyContinue
+        if ($null -eq $cimCommand) {
+            Write-Verbose "Get-CimInstance nao esta disponivel no runtime atual para fallback de versao do SO."
             $osVersion = "Desconhecida"
         }
         else {
-            $osVersion = (Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop).Version
+            $osVersion = (Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop).Version
         }
     }
 
@@ -262,7 +262,7 @@ function Invoke-AllMethodsWithQuality {
     )
     
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
-    $hasGetWmiObject = $null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue)
+    $hasGetWmiObject = $null -ne (Get-Command -Name "Get-CimInstance" -ErrorAction SilentlyContinue)
     $results = @{}
     $qualityScores = @{}
     
@@ -297,7 +297,7 @@ function Invoke-AllMethodsWithQuality {
     try {
         Write-Host "      • Tentando WMI..." -ForegroundColor Gray
         if (-not $hasGetWmiObject) {
-            throw "Get-WmiObject indisponivel neste runtime."
+            throw "Get-CimInstance indisponivel neste runtime."
         }
         if ($isLocal) {
             $results["WMI"] = & $WMICommand
@@ -412,10 +412,10 @@ function Get-HardwareInformationComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_Processor -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_Processor -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_Processor -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop
         }
     }
     $wmicCPU = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp cpu get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic cpu get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
@@ -441,10 +441,10 @@ function Get-HardwareInformationComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_PhysicalMemory -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_PhysicalMemory -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_PhysicalMemory -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_PhysicalMemory -ErrorAction Stop
         }
     }
     $wmicRAM = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp memorychip get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Capacity } } else { cmd /c "wmic memorychip get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Capacity } } }
@@ -469,10 +469,10 @@ function Get-HardwareInformationComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_ComputerSystem -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
         }
     }
     $wmicMB = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp computersystem get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic computersystem get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
@@ -541,10 +541,10 @@ function Get-BIOSInformationComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_BIOS -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_BIOS -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_BIOS -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop
         }
     }
     $wmicBIOS = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp bios get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Version } } else { cmd /c "wmic bios get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Version } } }
@@ -569,10 +569,10 @@ function Get-BIOSInformationComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_BaseBoard -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_BaseBoard -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_BaseBoard -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_BaseBoard -ErrorAction Stop
         }
     }
     $wmicBoard = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp baseboard get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Product } } else { cmd /c "wmic baseboard get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Product } } }
@@ -634,10 +634,10 @@ function Get-ServicesAnalysisComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_Service -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_Service -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_Service -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_Service -ErrorAction Stop
         }
     }
     $wmicSvc = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp service get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic service get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
@@ -738,10 +738,10 @@ function Get-ProcessAnalysisComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_Process -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_Process -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_Process -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_Process -ErrorAction Stop
         }
     }
     $wmicProc = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp process get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic process get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
@@ -831,10 +831,10 @@ function Get-DriversAnalysisComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_SystemDriver -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_SystemDriver -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_SystemDriver -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_SystemDriver -ErrorAction Stop
         }
     }
     $wmicSysDriver = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp sysdriver get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } else { cmd /c "wmic sysdriver get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.Name } } }
@@ -932,10 +932,10 @@ function Get-UpdatesAnalysisComplete {
             [string]$ComputerName
         )
         if ($ComputerName -and $ComputerName -ne "localhost") {
-            Get-WmiObject -Class Win32_QuickFixEngineering -ComputerName $ComputerName -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_QuickFixEngineering -ComputerName $ComputerName -ErrorAction Stop
         }
         else {
-            Get-WmiObject -Class Win32_QuickFixEngineering -ErrorAction Stop
+            Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop
         }
     }
     $wmicHotfix = { param($comp) if ($comp -and $comp -ne "localhost") { cmd /c "wmic /node:$comp qfe get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.HotFixID } } else { cmd /c "wmic qfe get /format:csv 2>nul" | ConvertFrom-Csv | Where-Object { $_.HotFixID } } }
@@ -1272,25 +1272,25 @@ function Get-SystemInformationComplete {
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
     $Results = @{}
     $AlternativeResults = @{}
-    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue))
+    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-CimInstance" -ErrorAction SilentlyContinue))
     $hasGetCounter = ($null -ne (Get-Command -Name "Get-Counter" -ErrorAction SilentlyContinue))
     
     Write-Host "Coletando informacoes completas do sistema $Computer..." -ForegroundColor Cyan
     
     Write-Host "  • Informacoes do Sistema Operacional..." -ForegroundColor White
     try {
-        if ($isLocal) {
-            try {
-                $Results.OSInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
-                $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
-            }
-            catch {
-                if ($hasGetWmiObject) {
-                    try {
-                        $AlternativeResults["WMI_OSInfo"] = Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop
-                        $Results.OSInfo = $AlternativeResults["WMI_OSInfo"]
-                        $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
-                    }
+            if ($isLocal) {
+                try {
+                    $Results.OSInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+                    $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
+                }
+                catch {
+                    if ($hasGetWmiObject) {
+                        try {
+                            $AlternativeResults["WMI_OSInfo"] = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+                            $Results.OSInfo = $AlternativeResults["WMI_OSInfo"]
+                            $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        }
                     catch {
                         $wmicOS = cmd /c "wmic os get Version,Caption,CountryCode,CSName,Description,InstallDate,SerialNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory,WindowsDirectory /format:csv 2>nul"
                         if ($wmicOS) {
@@ -1301,7 +1301,7 @@ function Get-SystemInformationComplete {
                     }
                 }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC na coleta de SO."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback WMIC na coleta de SO."
                     $wmicOS = cmd /c "wmic os get Version,Caption,CountryCode,CSName,Description,InstallDate,SerialNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory,WindowsDirectory /format:csv 2>nul"
                     if ($wmicOS) {
                         $AlternativeResults["WMIC_OSInfo"] = $wmicOS | ConvertFrom-Csv | Where-Object { $_.Version }
@@ -1312,17 +1312,17 @@ function Get-SystemInformationComplete {
             }
         }
         else {
-            try {
-                $Results.OSInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $Computer -ErrorAction Stop
-                $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
-            }
-            catch {
-                if ($hasGetWmiObject) {
-                    try {
-                        $AlternativeResults["WMI_OSInfo"] = Get-WmiObject -Class Win32_OperatingSystem -ComputerName $Computer -ErrorAction Stop
-                        $Results.OSInfo = $AlternativeResults["WMI_OSInfo"]
-                        $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
-                    }
+                try {
+                    $Results.OSInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $Computer -ErrorAction Stop
+                    $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
+                }
+                catch {
+                    if ($hasGetWmiObject) {
+                        try {
+                            $AlternativeResults["WMI_OSInfo"] = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $Computer -ErrorAction Stop
+                            $Results.OSInfo = $AlternativeResults["WMI_OSInfo"]
+                            $Results.OSInfo | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        }
                     catch {
                         $wmicOS = cmd /c "wmic /node:$Computer os get Version,Caption,CountryCode,CSName,Description,InstallDate,SerialNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory,WindowsDirectory /format:csv 2>nul"
                         if ($wmicOS) {
@@ -1333,7 +1333,7 @@ function Get-SystemInformationComplete {
                     }
                 }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de SO."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de SO."
                     $wmicOS = cmd /c "wmic /node:$Computer os get Version,Caption,CountryCode,CSName,Description,InstallDate,SerialNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory,WindowsDirectory /format:csv 2>nul"
                     if ($wmicOS) {
                         $AlternativeResults["WMIC_OSInfo"] = $wmicOS | ConvertFrom-Csv | Where-Object { $_.Version }
@@ -1499,7 +1499,7 @@ function Get-NetworkAnalysisComplete {
     $remoteManagementReachable = $false
     $networkResults = @{}
     $networkNotices = @()
-    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue))
+    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-CimInstance" -ErrorAction SilentlyContinue))
     $hasGetNetAdapter = ($null -ne (Get-Command -Name "Get-NetAdapter" -ErrorAction SilentlyContinue))
     $hasGetNetLbfoTeam = ($null -ne (Get-Command -Name "Get-NetLbfoTeam" -ErrorAction SilentlyContinue))
     $hasGetNetLbfoTeamMember = ($null -ne (Get-Command -Name "Get-NetLbfoTeamMember" -ErrorAction SilentlyContinue))
@@ -1538,7 +1538,7 @@ function Get-NetworkAnalysisComplete {
                 catch {
                     if ($hasGetWmiObject) {
                         try {
-                            $networkResults.Adapters = Get-WmiObject -Class Win32_NetworkAdapter -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
+                            $networkResults.Adapters = Get-CimInstance -ClassName Win32_NetworkAdapter -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
                             $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
                         }
                         catch {
@@ -1556,7 +1556,7 @@ function Get-NetworkAnalysisComplete {
                         }
                     }
                     else {
-                        Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC na coleta de adaptadores."
+                        Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback WMIC na coleta de adaptadores."
                         $wmicNet = cmd /c "wmic path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
                         if ($wmicNet) {
                             $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
@@ -1569,7 +1569,7 @@ function Get-NetworkAnalysisComplete {
                 Write-Verbose "Get-NetAdapter indisponivel neste runtime; seguindo para fallback WMI/WMIC."
                 if ($hasGetWmiObject) {
                     try {
-                        $networkResults.Adapters = Get-WmiObject -Class Win32_NetworkAdapter -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
+                        $networkResults.Adapters = Get-CimInstance -ClassName Win32_NetworkAdapter -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
                         $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
                     }
                     catch {
@@ -1587,7 +1587,7 @@ function Get-NetworkAnalysisComplete {
                     }
                 }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC na coleta de adaptadores."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback WMIC na coleta de adaptadores."
                     $wmicNet = cmd /c "wmic path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
                     if ($wmicNet) {
                         $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
@@ -1600,7 +1600,7 @@ function Get-NetworkAnalysisComplete {
             if ($remoteManagementReachable) {
                 if ($hasGetWmiObject) {
                     try {
-                        $networkResults.Adapters = Get-WmiObject -Class Win32_NetworkAdapter -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
+                        $networkResults.Adapters = Get-CimInstance -ClassName Win32_NetworkAdapter -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.NetEnabled -eq $true }
                         $networkResults.Adapters | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI-Remote"
                     }
                         catch {
@@ -1618,7 +1618,7 @@ function Get-NetworkAnalysisComplete {
                     }
                 }
                     else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de adaptadores."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de adaptadores."
                     $wmicNet = cmd /c "wmic /node:$Computer path win32_networkadapter where NetEnabled=true get Name,Speed,NetConnectionID,MACAddress,AdapterType /format:csv 2>nul"
                     if ($wmicNet) {
                         $networkResults.Adapters = $wmicNet | ConvertFrom-Csv | Where-Object { $_.Name }
@@ -1703,7 +1703,7 @@ function Get-NetworkAnalysisComplete {
                 catch {
                     if ($hasGetWmiObject) {
                         try {
-                            $networkResults.IPConfig = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
+                            $networkResults.IPConfig = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
                             $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
                         }
                         catch {
@@ -1720,7 +1720,7 @@ function Get-NetworkAnalysisComplete {
                         }
                     }
                     else {
-                        Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback ipconfig na coleta de IP."
+                        Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback ipconfig na coleta de IP."
                         $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
                         $networkResults.IPConfig = $ipconfigOutput
                     }
@@ -1728,11 +1728,11 @@ function Get-NetworkAnalysisComplete {
             }
             else {
                 Write-Verbose "Get-NetIPConfiguration indisponivel neste runtime; seguindo para fallback WMI/ipconfig."
-                if ($hasGetWmiObject) {
-                    try {
-                        $networkResults.IPConfig = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
-                        $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
-                    }
+                    if ($hasGetWmiObject) {
+                        try {
+                            $networkResults.IPConfig = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
+                            $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        }
                     catch {
                         $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
                         if ($ipconfigOutput) {
@@ -1747,20 +1747,20 @@ function Get-NetworkAnalysisComplete {
                     }
                 }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback ipconfig na coleta de IP."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback ipconfig na coleta de IP."
                     $ipconfigOutput = cmd /c "ipconfig /all 2>nul"
                     $networkResults.IPConfig = $ipconfigOutput
                 }
             }
         }
         else {
-            if ($remoteManagementReachable) {
-                if ($hasGetWmiObject) {
-                    $networkResults.IPConfig = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
+                if ($remoteManagementReachable) {
+                    if ($hasGetWmiObject) {
+                    $networkResults.IPConfig = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.IPEnabled -eq $true }
                     $networkResults.IPConfig | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI-Remote"
-                }
+                    }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de IP."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de IP."
                     $wmicIP = cmd /c "wmic /node:$Computer nicconfig where IPEnabled=true get Description,IPAddress,IPSubnet,DefaultIPGateway,DNSHostName,DNSDomain /format:csv 2>nul"
                     if ($wmicIP) {
                         $networkResults.IPConfig = $wmicIP | ConvertFrom-Csv | Where-Object { $_.Description }
@@ -2097,7 +2097,7 @@ function Get-DiskUsageAnalysisComplete {
     Write-Host "Analisando utilizacao de disco detalhada para $Computer..." -ForegroundColor Cyan
     
     $isLocal = ($Computer -eq "localhost" -or $Computer -eq $env:COMPUTERNAME -or $Computer -eq ".")
-    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue))
+    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-CimInstance" -ErrorAction SilentlyContinue))
     $hasSafeRemoteComputerName = ($Computer -match '^[a-zA-Z0-9.-]+$')
     $diskAnalysis = @()
     $folderAnalysis = @()
@@ -2111,11 +2111,11 @@ function Get-DiskUsageAnalysisComplete {
             }
             catch {
                 if ($hasGetWmiObject) {
-                    $drives = Get-WmiObject -Class Win32_LogicalDisk -ErrorAction Stop | Where-Object { $_.DriveType -eq 3 }
-                    $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    $drives = Get-CimInstance -ClassName Win32_LogicalDisk -ErrorAction Stop | Where-Object { $_.DriveType -eq 3 }
+                    $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
                 }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC na coleta de disco."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback WMIC na coleta de disco."
                     $wmicDrives = cmd /c "wmic logicaldisk where drivetype=3 get DeviceID,VolumeName,Size,FreeSpace /format:csv 2>nul"
                     if ($wmicDrives) {
                         $drives = $wmicDrives | ConvertFrom-Csv | Where-Object { $_.DeviceID }
@@ -2131,11 +2131,11 @@ function Get-DiskUsageAnalysisComplete {
             }
             catch {
                 if ($hasGetWmiObject) {
-                    $drives = Get-WmiObject -Class Win32_LogicalDisk -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.DriveType -eq 3 }
-                    $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                    $drives = Get-CimInstance -ClassName Win32_LogicalDisk -ComputerName $Computer -ErrorAction Stop | Where-Object { $_.DriveType -eq 3 }
+                    $drives | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
                 }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de disco."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback WMIC remoto na coleta de disco."
                     if ($hasSafeRemoteComputerName) {
                         $wmicDrives = cmd /c "wmic /node:$Computer logicaldisk where drivetype=3 get DeviceID,VolumeName,Size,FreeSpace /format:csv 2>nul"
                         if ($wmicDrives) {
@@ -2849,7 +2849,7 @@ function Get-SecurityConfigurationAnalysis {
     $securityResults = @{}
     $hasGetLocalUser = ($null -ne (Get-Command -Name "Get-LocalUser" -ErrorAction SilentlyContinue))
     $hasGetLocalGroup = ($null -ne (Get-Command -Name "Get-LocalGroup" -ErrorAction SilentlyContinue))
-    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue))
+    $hasGetWmiObject = ($null -ne (Get-Command -Name "Get-CimInstance" -ErrorAction SilentlyContinue))
     $hasGetNetFirewallProfile = ($null -ne (Get-Command -Name "Get-NetFirewallProfile" -ErrorAction SilentlyContinue))
     $hasGetNetFirewallRule = ($null -ne (Get-Command -Name "Get-NetFirewallRule" -ErrorAction SilentlyContinue))
     $hasGetSmbShare = ($null -ne (Get-Command -Name "Get-SmbShare" -ErrorAction SilentlyContinue))
@@ -2868,10 +2868,10 @@ function Get-SecurityConfigurationAnalysis {
                 catch {
                     if ($hasGetWmiObject) {
                         try {
-                            $securityResults.LocalUsers = Get-WmiObject -Class Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop
-                            $securityResults.LocalGroups = Get-WmiObject -Class Win32_Group -Filter "LocalAccount=True" -ErrorAction Stop
-                            $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
-                            $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                            $securityResults.LocalUsers = Get-CimInstance -ClassName Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop
+                            $securityResults.LocalGroups = Get-CimInstance -ClassName Win32_Group -Filter "LocalAccount=True" -ErrorAction Stop
+                            $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
+                            $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
                         }
                         catch {
                             $netUserOutput = cmd /c "net user 2>nul"
@@ -2891,7 +2891,7 @@ function Get-SecurityConfigurationAnalysis {
                         }
                     }
                     else {
-                        Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback net user/net localgroup."
+                        Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback net user/net localgroup."
                         $netUserOutput = cmd /c "net user 2>nul"
                         $netGroupOutput = cmd /c "net localgroup 2>nul"
                         $securityResults.LocalUsers = $netUserOutput
@@ -2903,10 +2903,10 @@ function Get-SecurityConfigurationAnalysis {
                 Write-Verbose "Cmdlets Get-LocalUser/Get-LocalGroup indisponiveis neste runtime; seguindo para fallback WMI/net."
                 if ($hasGetWmiObject) {
                     try {
-                        $securityResults.LocalUsers = Get-WmiObject -Class Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop
-                        $securityResults.LocalGroups = Get-WmiObject -Class Win32_Group -Filter "LocalAccount=True" -ErrorAction Stop
-                        $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
-                        $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        $securityResults.LocalUsers = Get-CimInstance -ClassName Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop
+                        $securityResults.LocalGroups = Get-CimInstance -ClassName Win32_Group -Filter "LocalAccount=True" -ErrorAction Stop
+                        $securityResults.LocalUsers | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
+                        $securityResults.LocalGroups | Add-Member -NotePropertyName "Method" -NotePropertyValue "CIM"
                     }
                     catch {
                         $netUserOutput = cmd /c "net user 2>nul"
@@ -2926,7 +2926,7 @@ function Get-SecurityConfigurationAnalysis {
                     }
                 }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback net user/net localgroup."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback net user/net localgroup."
                     $netUserOutput = cmd /c "net user 2>nul"
                     $netGroupOutput = cmd /c "net localgroup 2>nul"
                     $securityResults.LocalUsers = $netUserOutput
@@ -3010,18 +3010,18 @@ function Get-SecurityConfigurationAnalysis {
         }
     
     try {
-        if ($isLocal) {
-            if ($hasGetSmbShare) {
-                try {
+                if ($isLocal) {
+                    if ($hasGetSmbShare) {
+                        try {
                     $securityResults.NetworkShares = Get-SmbShare -ErrorAction Stop
                     $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "Get-SmbShare"
                 }
-                catch {
-                    if ($hasGetWmiObject) {
-                        try {
-                            $securityResults.NetworkShares = Get-WmiObject -Class Win32_Share -ErrorAction Stop
-                            $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
-                        }
+                    catch {
+                        if ($hasGetWmiObject) {
+                            try {
+                                $securityResults.NetworkShares = Get-CimInstance -ClassName Win32_Share -ErrorAction Stop
+                                $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                            }
                         catch {
                             $netShareOutput = cmd /c "net share 2>nul"
                             if (-not $netShareOutput) {
@@ -3038,19 +3038,19 @@ function Get-SecurityConfigurationAnalysis {
                         }
                     }
                     else {
-                        Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback net share."
+                        Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback net share."
                         $netShareOutput = cmd /c "net share 2>nul"
                         $securityResults.NetworkShares = $netShareOutput
                     }
                 }
             }
-            else {
-                Write-Verbose "Get-SmbShare indisponivel neste runtime; seguindo para fallback WMI/net share."
-                if ($hasGetWmiObject) {
-                    try {
-                        $securityResults.NetworkShares = Get-WmiObject -Class Win32_Share -ErrorAction Stop
-                        $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
-                    }
+                else {
+                    Write-Verbose "Get-SmbShare indisponivel neste runtime; seguindo para fallback WMI/net share."
+                    if ($hasGetWmiObject) {
+                        try {
+                            $securityResults.NetworkShares = Get-CimInstance -ClassName Win32_Share -ErrorAction Stop
+                            $securityResults.NetworkShares | Add-Member -NotePropertyName "Method" -NotePropertyValue "WMI"
+                        }
                     catch {
                         $netShareOutput = cmd /c "net share 2>nul"
                         if (-not $netShareOutput) {
@@ -3067,7 +3067,7 @@ function Get-SecurityConfigurationAnalysis {
                     }
                 }
                 else {
-                    Write-Verbose "Get-WmiObject indisponivel neste runtime; seguindo para fallback net share."
+                    Write-Verbose "Get-CimInstance indisponivel neste runtime; seguindo para fallback net share."
                     $netShareOutput = cmd /c "net share 2>nul"
                     $securityResults.NetworkShares = $netShareOutput
                 }
