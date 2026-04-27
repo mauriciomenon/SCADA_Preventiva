@@ -1,0 +1,23 @@
+NMR5_Baseline.ps1
+  f174f0de816f6884 1019,2736,2782-2789,2818-2821,2826-2833,3167,3514-3516,3524-3525,3594,3817-3826,3851-3854,3885-3888,3895-3897,3911-3912,3919-3924,4057
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "15cac516ed81db01ec1634e995453ade3aee3140",
+  "prompts": {
+    "f174f0de816f6884": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019db4ca-dc0d-79c0-b6a1-b29ec1016ed0",
+        "model": "gpt-5.3-codex-spark"
+      },
+      "human_author": "Codex",
+      "messages": [],
+      "total_additions": 59,
+      "total_deletions": 18,
+      "accepted_lines": 59,
+      "overriden_lines": 0
+    }
+  }
+}
